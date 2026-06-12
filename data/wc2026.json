@@ -1,0 +1,83 @@
+{
+  "tournament_name": "FIFA World Cup",
+  "year": 2026,
+  "start_date": "2026-06-11",
+  "hosts": ["United States", "Canada", "Mexico"],
+  "groups": {
+    "A": ["Mexico", "South Africa", "South Korea", "Czech Republic"],
+    "B": ["Canada", "Bosnia and Herzegovina", "Qatar", "Switzerland"],
+    "C": ["Brazil", "Morocco", "Haiti", "Scotland"],
+    "D": ["United States", "Paraguay", "Australia", "Turkey"],
+    "E": ["Germany", "Curacao", "Ivory Coast", "Ecuador"],
+    "F": ["Netherlands", "Japan", "Sweden", "Tunisia"],
+    "G": ["Belgium", "Egypt", "Iran", "New Zealand"],
+    "H": ["Spain", "Cape Verde", "Saudi Arabia", "Uruguay"],
+    "I": ["France", "Senegal", "Iraq", "Norway"],
+    "J": ["Argentina", "Algeria", "Austria", "Jordan"],
+    "K": ["Portugal", "DR Congo", "Uzbekistan", "Colombia"],
+    "L": ["England", "Croatia", "Ghana", "Panama"]
+  },
+  "round_of_32": [
+    {"match": 73, "slot1": "2A", "slot2": "2B"},
+    {"match": 74, "slot1": "1E", "slot2": "3:ABCDF"},
+    {"match": 75, "slot1": "1F", "slot2": "2C"},
+    {"match": 76, "slot1": "1C", "slot2": "2F"},
+    {"match": 77, "slot1": "1I", "slot2": "3:CDFGH"},
+    {"match": 78, "slot1": "2E", "slot2": "2I"},
+    {"match": 79, "slot1": "1A", "slot2": "3:CEFHI"},
+    {"match": 80, "slot1": "1L", "slot2": "3:EHIJK"},
+    {"match": 81, "slot1": "1D", "slot2": "3:BEFIJ"},
+    {"match": 82, "slot1": "1G", "slot2": "3:AEHIJ"},
+    {"match": 83, "slot1": "2K", "slot2": "2L"},
+    {"match": 84, "slot1": "1H", "slot2": "2J"},
+    {"match": 85, "slot1": "1B", "slot2": "3:EFGIJ"},
+    {"match": 86, "slot1": "1J", "slot2": "2H"},
+    {"match": 87, "slot1": "1K", "slot2": "3:DEIJL"},
+    {"match": 88, "slot1": "2D", "slot2": "2G"}
+  ],
+  "round_of_16": [
+    {"match": 89, "slot1": "W74", "slot2": "W77"},
+    {"match": 90, "slot1": "W73", "slot2": "W75"},
+    {"match": 91, "slot1": "W76", "slot2": "W78"},
+    {"match": 92, "slot1": "W79", "slot2": "W80"},
+    {"match": 93, "slot1": "W83", "slot2": "W84"},
+    {"match": 94, "slot1": "W81", "slot2": "W82"},
+    {"match": 95, "slot1": "W86", "slot2": "W88"},
+    {"match": 96, "slot1": "W85", "slot2": "W87"}
+  ],
+  "quarterfinals": [
+    {"match": 97, "slot1": "W89", "slot2": "W90"},
+    {"match": 98, "slot1": "W93", "slot2": "W94"},
+    {"match": 99, "slot1": "W91", "slot2": "W92"},
+    {"match": 100, "slot1": "W95", "slot2": "W96"}
+  ],
+  "semifinals": [
+    {"match": 101, "slot1": "W97", "slot2": "W98"},
+    {"match": 102, "slot1": "W99", "slot2": "W100"}
+  ],
+  "final": {"match": 104, "slot1": "W101", "slot2": "W102"},
+  "flags": {
+    "Mexico": "mx", "South Africa": "za", "South Korea": "kr", "Czech Republic": "cz",
+    "Canada": "ca", "Bosnia and Herzegovina": "ba", "Qatar": "qa", "Switzerland": "ch",
+    "Brazil": "br", "Morocco": "ma", "Haiti": "ht", "Scotland": "gb-sct",
+    "United States": "us", "Paraguay": "py", "Australia": "au", "Turkey": "tr",
+    "Germany": "de", "Curacao": "cw", "Ivory Coast": "ci", "Ecuador": "ec",
+    "Netherlands": "nl", "Japan": "jp", "Sweden": "se", "Tunisia": "tn",
+    "Belgium": "be", "Egypt": "eg", "Iran": "ir", "New Zealand": "nz",
+    "Spain": "es", "Cape Verde": "cv", "Saudi Arabia": "sa", "Uruguay": "uy",
+    "France": "fr", "Senegal": "sn", "Iraq": "iq", "Norway": "no",
+    "Argentina": "ar", "Algeria": "dz", "Austria": "at", "Jordan": "jo",
+    "Portugal": "pt", "DR Congo": "cd", "Uzbekistan": "uz", "Colombia": "co",
+    "England": "gb-eng", "Croatia": "hr", "Ghana": "gh", "Panama": "pa"
+  },
+  "team_aliases": {
+    "Curacao": ["Curaçao", "Curacao"],
+    "Turkey": ["Turkey", "Türkiye"],
+    "Czech Republic": ["Czech Republic", "Czechia"],
+    "Ivory Coast": ["Ivory Coast", "Côte d'Ivoire"],
+    "United States": ["United States", "USA"],
+    "South Korea": ["South Korea", "Korea Republic"],
+    "DR Congo": ["DR Congo", "Congo DR", "Democratic Republic of the Congo"],
+    "Cape Verde": ["Cape Verde", "Cabo Verde"]
+  }
+}
