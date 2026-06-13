@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.data_loader import download_data, load_results, load_shootouts, load_wc2026
-from src.livefeed import fetch_live_matches, fetch_todays_matches, get_api_key
+from src.livefeed import fetch_finished_matches, fetch_live_matches, fetch_todays_matches, get_api_key
 from src.predict import MatchPredictor, ingame_probs
 from src.simulate import TournamentSimulator
 from src.tournament import split_real_results, standings
@@ -59,6 +59,34 @@ GROUP_OF = {t: g for g, ts in config["groups"].items() for t in ts}
 FLAGS = config["flags"]
 
 
+FINISHED_REFRESH_SECS = 300  # re-query API every 5 minutes
+
+
+def _merge_api_finished(group_results, ko_results, api_matches, cfg):
+    """Add API-fetched finished matches not yet in the CSV-derived lists."""
+    group_of = {t: g for g, ts in cfg["groups"].items() for t in ts}
+    existing = {frozenset((t1, t2)) for t1, t2, *_ in group_results}
+    existing |= {frozenset((t1, t2)) for t1, t2, _ in ko_results}
+    new_group = list(group_results)
+    new_ko = list(ko_results)
+    for m in api_matches:
+        t1, t2 = m["home"], m["away"]
+        key = frozenset((t1, t2))
+        if key in existing:
+            continue
+        s1, s2 = m["score_home"], m["score_away"]
+        g1, g2 = group_of.get(t1), group_of.get(t2)
+        if g1 is not None and g1 == g2:
+            new_group.append((t1, t2, s1, s2))
+            existing.add(key)
+        else:
+            winner = t1 if s1 > s2 else (t2 if s2 > s1 else None)
+            if winner:
+                new_ko.append((t1, t2, winner))
+                existing.add(key)
+    return new_group, new_ko
+
+
 def flag_url(team: str, width: int = 40) -> str:
     code = FLAGS.get(team)
     return f"https://flagcdn.com/w{width}/{code}.png" if code else ""
@@ -93,6 +121,19 @@ with st.sidebar:
             st.markdown(report_path.read_text(encoding="utf-8"))
 
 predictor = get_predictor(st.session_state.refresh_token, squad_strength)
+
+# ── Pull finished matches from API and merge into CSV results (5-min TTL) ───
+api_key = get_api_key()
+if api_key:
+    _now = time.time()
+    if _now - st.session_state.get("finished_fetch_time", 0) > FINISHED_REFRESH_SECS:
+        st.session_state.finished_matches_api = fetch_finished_matches(api_key)
+        st.session_state.finished_fetch_time = _now
+    group_results, ko_results = _merge_api_finished(
+        group_results, ko_results,
+        st.session_state.get("finished_matches_api", []),
+        config,
+    )
 
 tab_match, tab_sim, tab_live_game, tab_live = st.tabs(
     ["🎯 Match Predictor", "🏆 Tournament Simulator", "🔴 Live", "📡 Live Tracker"])
@@ -277,7 +318,6 @@ with tab_sim:
 # ─────────────────────────────────────────── Live tab ───────────────────────
 with tab_live_game:
     LIVE_REFRESH_SECS = 30
-    api_key = get_api_key()
 
     if not api_key:
         st.warning("**API key not configured.** To enable live scores:", icon="🔑")
@@ -285,193 +325,182 @@ with tab_live_game:
             "1. Sign up free at [football-data.org](https://www.football-data.org/)\n"
             "2. Copy `.streamlit/secrets.toml.example` → `.streamlit/secrets.toml`\n"
             "3. Paste your key and restart the app.")
-        st.stop()
-
-    # ── Auto-refresh every 30 s while on this tab ────────────────────────
-    now = time.time()
-    last_fetch = st.session_state.get("last_live_fetch", 0)
-    if now - last_fetch > LIVE_REFRESH_SECS:
-        matches, err = fetch_live_matches(api_key)
-        st.session_state.live_matches = matches
-        st.session_state.live_error = err
-        st.session_state.last_live_fetch = now
-
-    live_matches = st.session_state.get("live_matches", [])
-
-    col_hdr, col_btn = st.columns([5, 1])
-    with col_hdr:
-        secs_ago = int(now - st.session_state.get("last_live_fetch", now))
-        st.caption(f"Auto-refreshes every {LIVE_REFRESH_SECS}s · last updated {secs_ago}s ago")
-    with col_btn:
-        if st.button("🔄 Refresh now"):
+    else:
+        @st.fragment(run_every=LIVE_REFRESH_SECS)
+        def _live_feed():
             matches, err = fetch_live_matches(api_key)
             st.session_state.live_matches = matches
-            st.session_state.live_error = err
-            st.session_state.last_live_fetch = time.time()
-            st.rerun()
 
-    if st.session_state.get("live_error"):
-        st.warning(f"API: {st.session_state.live_error}", icon="⚠️")
+            col_hdr, col_btn = st.columns([5, 1])
+            with col_hdr:
+                st.caption(f"Auto-refreshes every {LIVE_REFRESH_SECS}s")
+            with col_btn:
+                if st.button("🔄 Refresh now", key="live_refresh_btn"):
+                    st.rerun(scope="fragment")
 
-    if live_matches:
-        st.markdown(f"### {len(live_matches)} match{'es' if len(live_matches) > 1 else ''} in progress")
-        for match in live_matches:
-            home_t = match["home"]
-            away_t = match["away"]
-            gh = match["score_home"]
-            ga = match["score_away"]
-            minute = match["minute"]
-            status = match["status"]
-            match_key = f"{home_t}v{away_t}"
+            if err and not matches:
+                st.warning(f"API: {err}", icon="⚠️")
 
-            # minute label
-            if status == "PAUSED":
-                min_label = "HT"
-                display_min = 45
-            elif status in ("EXTRA_TIME",):
-                min_label = f"{minute}' (ET)"
-                display_min = minute
-            elif status == "PENALTY_SHOOTOUT":
-                min_label = "Pens"
-                display_min = 120
+            if matches:
+                st.markdown(f"### {len(matches)} match{'es' if len(matches) > 1 else ''} in progress")
+                for match in matches:
+                    home_t = match["home"]
+                    away_t = match["away"]
+                    gh = match["score_home"]
+                    ga = match["score_away"]
+                    minute = match["minute"]
+                    status = match["status"]
+                    match_key = f"{home_t}v{away_t}"
+
+                    if status == "PAUSED":
+                        min_label = "HT"
+                        display_min = 45
+                    elif status == "EXTRA_TIME":
+                        min_label = f"{minute}' (ET)"
+                        display_min = minute
+                    elif status == "PENALTY_SHOOTOUT":
+                        min_label = "Pens"
+                        display_min = 120
+                    else:
+                        min_label = f"{minute}'"
+                        display_min = minute
+
+                    pm_key = f"prematch_{match_key}"
+                    if pm_key not in st.session_state:
+                        try:
+                            pm = predictor.predict(home_t, away_t, neutral=True,
+                                                   injuries=st.session_state.injuries)
+                            st.session_state[pm_key] = pm
+                        except Exception:
+                            st.session_state[pm_key] = None
+                    pm = st.session_state[pm_key]
+
+                    with st.container(border=True):
+                        st.markdown(
+                            f'<div style="display:flex;justify-content:center;align-items:center;'
+                            f'gap:14px;margin:4px 0 10px 0;">'
+                            f'<img src="{flag_url(home_t, 80)}" width="48" '
+                            f'style="border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);">'
+                            f'<span style="font-size:2rem;font-weight:800;">{gh}</span>'
+                            f'<span style="font-size:1.1rem;color:#6b7280;padding:0 4px;">–</span>'
+                            f'<span style="font-size:2rem;font-weight:800;">{ga}</span>'
+                            f'<img src="{flag_url(away_t, 80)}" width="48" '
+                            f'style="border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);">'
+                            f'</div>'
+                            f'<div style="text-align:center;font-size:0.95rem;color:#374151;margin-bottom:8px;">'
+                            f'<b>{home_t}</b> &nbsp;vs&nbsp; <b>{away_t}</b> &nbsp;'
+                            f'<span style="background:#ef4444;color:#fff;border-radius:4px;'
+                            f'padding:1px 7px;font-size:0.8rem;">● {min_label}</span>'
+                            f'</div>',
+                            unsafe_allow_html=True)
+
+                        if pm is None:
+                            st.warning(f"Could not generate pre-match prediction for {home_t} vs {away_t}.")
+                            continue
+
+                        extra = 5 if display_min >= 90 else (3 if display_min >= 45 else 0)
+                        live_p = ingame_probs(
+                            pm["lambda_home"], pm["lambda_away"],
+                            gh, ga, display_min, extra_min=extra)
+
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric(f"{home_t} win", f"{live_p['p_home']:.1%}")
+                        m2.metric("Draw", f"{live_p['p_draw']:.1%}")
+                        m3.metric(f"{away_t} win", f"{live_p['p_away']:.1%}")
+
+                        bar = go.Figure(go.Bar(
+                            x=[live_p["p_home"], live_p["p_draw"], live_p["p_away"]],
+                            y=[f"{home_t} win", "Draw", f"{away_t} win"],
+                            orientation="h",
+                            marker_color=["#2563eb", "#9ca3af", "#dc2626"],
+                            text=[f"{p:.1%}" for p in
+                                  (live_p["p_home"], live_p["p_draw"], live_p["p_away"])],
+                            textposition="auto"))
+                        bar.update_layout(height=180, margin=dict(l=0, r=0, t=8, b=8),
+                                          xaxis_tickformat=".0%", showlegend=False)
+                        st.plotly_chart(bar, width="stretch")
+
+                        history = st.session_state.setdefault("wpa_history", {})
+                        pts = history.setdefault(match_key, [])
+                        if not pts or pts[-1][0] < display_min:
+                            pts.append((display_min, live_p["p_home"],
+                                        live_p["p_draw"], live_p["p_away"]))
+
+                        if len(pts) >= 2:
+                            mins  = [p[0] for p in pts]
+                            ph_ts = [p[1] for p in pts]
+                            pd_ts = [p[2] for p in pts]
+                            pa_ts = [p[3] for p in pts]
+                            timeline = go.Figure()
+                            timeline.add_trace(go.Scatter(
+                                x=mins, y=ph_ts, mode="lines+markers", name=f"{home_t} win",
+                                line=dict(color="#2563eb", width=2)))
+                            timeline.add_trace(go.Scatter(
+                                x=mins, y=pd_ts, mode="lines+markers", name="Draw",
+                                line=dict(color="#9ca3af", width=2, dash="dot")))
+                            timeline.add_trace(go.Scatter(
+                                x=mins, y=pa_ts, mode="lines+markers", name=f"{away_t} win",
+                                line=dict(color="#dc2626", width=2)))
+                            timeline.update_layout(
+                                title="Win probability over time",
+                                height=280, xaxis_title="Minute",
+                                yaxis_tickformat=".0%", yaxis_range=[0, 1],
+                                margin=dict(l=0, r=0, t=36, b=0),
+                                legend=dict(orientation="h", yanchor="bottom", y=1.02))
+                            st.plotly_chart(timeline, width="stretch")
+
+                        with st.expander("Pre-match prediction", expanded=False):
+                            st.caption(
+                                f"Pre-match: {home_t} {pm['p_home']:.1%} / "
+                                f"Draw {pm['p_draw']:.1%} / {away_t} {pm['p_away']:.1%} · "
+                                f"xG {pm['lambda_home']:.2f}–{pm['lambda_away']:.2f} · "
+                                f"Elo {pm['elo_home']:.0f} vs {pm['elo_away']:.0f}")
             else:
-                min_label = f"{minute}'"
-                display_min = minute
+                st.info("No WC matches currently in progress.")
+                today_matches = fetch_todays_matches(api_key)
+                if today_matches:
+                    st.markdown("#### Today's upcoming matches")
+                    for match in today_matches:
+                        home_t = match["home"]
+                        away_t = match["away"]
+                        utc = match["utc_date"][:16].replace("T", " ") + " UTC" if match["utc_date"] else ""
+                        with st.container(border=True):
+                            st.markdown(
+                                f'<div style="display:flex;align-items:center;gap:12px;">'
+                                f'<img src="{flag_url(home_t, 40)}" width="32" style="border-radius:3px;">'
+                                f'<b>{home_t}</b> vs <b>{away_t}</b>'
+                                f'<img src="{flag_url(away_t, 40)}" width="32" style="border-radius:3px;">'
+                                f'<span style="color:#6b7280;font-size:0.85rem">{utc}</span>'
+                                f'</div>', unsafe_allow_html=True)
+                            try:
+                                pm = predictor.predict(home_t, away_t, neutral=True,
+                                                       injuries=st.session_state.injuries)
+                                c1, c2, c3 = st.columns(3)
+                                c1.metric(f"{home_t} win", f"{pm['p_home']:.1%}")
+                                c2.metric("Draw", f"{pm['p_draw']:.1%}")
+                                c3.metric(f"{away_t} win", f"{pm['p_away']:.1%}")
+                            except Exception:
+                                st.caption("Could not generate prediction for this fixture.")
+                else:
+                    st.caption("No WC matches scheduled for today either.")
 
-            # Get pre-match lambdas (cached per match)
-            pm_key = f"prematch_{match_key}"
-            if pm_key not in st.session_state:
-                try:
-                    pm = predictor.predict(home_t, away_t, neutral=True,
-                                          injuries=st.session_state.injuries)
-                    st.session_state[pm_key] = pm
-                except Exception:
-                    st.session_state[pm_key] = None
-
-            pm = st.session_state[pm_key]
-
-            with st.container(border=True):
-                # ── Score banner ─────────────────────────────────────────
-                st.markdown(
-                    f'<div style="display:flex;justify-content:center;align-items:center;'
-                    f'gap:14px;margin:4px 0 10px 0;">'
-                    f'<img src="{flag_url(home_t, 80)}" width="48" '
-                    f'style="border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);">'
-                    f'<span style="font-size:2rem;font-weight:800;">{gh}</span>'
-                    f'<span style="font-size:1.1rem;color:#6b7280;padding:0 4px;">–</span>'
-                    f'<span style="font-size:2rem;font-weight:800;">{ga}</span>'
-                    f'<img src="{flag_url(away_t, 80)}" width="48" '
-                    f'style="border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);">'
-                    f'</div>'
-                    f'<div style="text-align:center;font-size:0.95rem;color:#374151;margin-bottom:8px;">'
-                    f'<b>{home_t}</b> &nbsp;vs&nbsp; <b>{away_t}</b> &nbsp;'
-                    f'<span style="background:#ef4444;color:#fff;border-radius:4px;'
-                    f'padding:1px 7px;font-size:0.8rem;">● {min_label}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True)
-
-                if pm is None:
-                    st.warning(f"Could not generate pre-match prediction for {home_t} vs {away_t}.")
-                    continue
-
-                # ── In-game probabilities ────────────────────────────────
-                extra = 5 if display_min >= 90 else (3 if display_min >= 45 else 0)
-                live_p = ingame_probs(
-                    pm["lambda_home"], pm["lambda_away"],
-                    gh, ga, display_min, extra_min=extra)
-
-                m1, m2, m3 = st.columns(3)
-                m1.metric(f"{home_t} win", f"{live_p['p_home']:.1%}")
-                m2.metric("Draw", f"{live_p['p_draw']:.1%}")
-                m3.metric(f"{away_t} win", f"{live_p['p_away']:.1%}")
-
-                bar = go.Figure(go.Bar(
-                    x=[live_p["p_home"], live_p["p_draw"], live_p["p_away"]],
-                    y=[f"{home_t} win", "Draw", f"{away_t} win"],
-                    orientation="h",
-                    marker_color=["#2563eb", "#9ca3af", "#dc2626"],
-                    text=[f"{p:.1%}" for p in
-                          (live_p["p_home"], live_p["p_draw"], live_p["p_away"])],
-                    textposition="auto"))
-                bar.update_layout(height=180, margin=dict(l=0, r=0, t=8, b=8),
-                                  xaxis_tickformat=".0%", showlegend=False)
-                st.plotly_chart(bar, width="stretch")
-
-                # ── Win probability timeline ─────────────────────────────
-                history = st.session_state.setdefault("wpa_history", {})
-                pts = history.setdefault(match_key, [])
-                # Append a point only if the minute has advanced
-                if not pts or pts[-1][0] < display_min:
-                    pts.append((display_min, live_p["p_home"],
-                                live_p["p_draw"], live_p["p_away"]))
-
-                if len(pts) >= 2:
-                    mins  = [p[0] for p in pts]
-                    ph_ts = [p[1] for p in pts]
-                    pd_ts = [p[2] for p in pts]
-                    pa_ts = [p[3] for p in pts]
-                    timeline = go.Figure()
-                    timeline.add_trace(go.Scatter(
-                        x=mins, y=ph_ts, mode="lines+markers", name=f"{home_t} win",
-                        line=dict(color="#2563eb", width=2)))
-                    timeline.add_trace(go.Scatter(
-                        x=mins, y=pd_ts, mode="lines+markers", name="Draw",
-                        line=dict(color="#9ca3af", width=2, dash="dot")))
-                    timeline.add_trace(go.Scatter(
-                        x=mins, y=pa_ts, mode="lines+markers", name=f"{away_t} win",
-                        line=dict(color="#dc2626", width=2)))
-                    timeline.update_layout(
-                        title="Win probability over time",
-                        height=280, xaxis_title="Minute",
-                        yaxis_tickformat=".0%", yaxis_range=[0, 1],
-                        margin=dict(l=0, r=0, t=36, b=0),
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02))
-                    st.plotly_chart(timeline, width="stretch")
-
-                # Pre-match context
-                with st.expander("Pre-match prediction", expanded=False):
-                    st.caption(
-                        f"Pre-match: {home_t} {pm['p_home']:.1%} / "
-                        f"Draw {pm['p_draw']:.1%} / {away_t} {pm['p_away']:.1%} · "
-                        f"xG {pm['lambda_home']:.2f}–{pm['lambda_away']:.2f} · "
-                        f"Elo {pm['elo_home']:.0f} vs {pm['elo_away']:.0f}")
-
-        # Schedule auto-rerun after LIVE_REFRESH_SECS
-        time.sleep(LIVE_REFRESH_SECS)
-        st.rerun()
-
-    else:
-        # No live matches — show today's schedule
-        st.info("No WC matches currently in progress.")
-        today_matches = fetch_todays_matches(api_key)
-        if today_matches:
-            st.markdown("#### Today's upcoming matches")
-            for match in today_matches:
-                home_t = match["home"]
-                away_t = match["away"]
-                utc = match["utc_date"][:16].replace("T", " ") + " UTC" if match["utc_date"] else ""
-                with st.container(border=True):
-                    st.markdown(
-                        f'<div style="display:flex;align-items:center;gap:12px;">'
-                        f'<img src="{flag_url(home_t, 40)}" width="32" style="border-radius:3px;">'
-                        f'<b>{home_t}</b> vs <b>{away_t}</b>'
-                        f'<img src="{flag_url(away_t, 40)}" width="32" style="border-radius:3px;">'
-                        f'<span style="color:#6b7280;font-size:0.85rem">{utc}</span>'
-                        f'</div>', unsafe_allow_html=True)
-                    try:
-                        pm = predictor.predict(home_t, away_t, neutral=True,
-                                              injuries=st.session_state.injuries)
-                        c1, c2, c3 = st.columns(3)
-                        c1.metric(f"{home_t} win", f"{pm['p_home']:.1%}")
-                        c2.metric("Draw", f"{pm['p_draw']:.1%}")
-                        c3.metric(f"{away_t} win", f"{pm['p_away']:.1%}")
-                    except Exception:
-                        st.caption("Could not generate prediction for this fixture.")
-        else:
-            st.caption("No WC matches scheduled for today either.")
+        _live_feed()
 
 # ─────────────────────────────────────────── Live Tracker tab ───────────────
 with tab_live:
+    _tracker_hdr, _tracker_btn = st.columns([5, 1])
+    with _tracker_hdr:
+        if api_key and st.session_state.get("finished_fetch_time"):
+            _secs = int(time.time() - st.session_state.finished_fetch_time)
+            st.caption(f"Auto-syncs from API every {FINISHED_REFRESH_SECS // 60} min · last updated {_secs}s ago")
+        else:
+            st.caption("No API key — showing CSV data only. Add your key to enable real-time sync.")
+    with _tracker_btn:
+        if st.button("🔄 Sync now", key="tracker_sync"):
+            if api_key:
+                st.session_state.finished_matches_api = fetch_finished_matches(api_key)
+                st.session_state.finished_fetch_time = time.time()
+            st.rerun()
     st.markdown(f"#### Played 2026 World Cup matches ({len(group_results) + len(ko_results)})")
     all_played = group_results + st.session_state.manual_results
     if not all_played and not ko_results:

@@ -7,3 +7,4 @@ models/
 scripts/debug_api.py
 scripts/debug_api2.py
 scripts/debug_live.py
+scripts/debug_finished.py

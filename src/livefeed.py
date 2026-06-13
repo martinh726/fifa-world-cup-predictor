@@ -27,6 +27,7 @@ _EXTRA_ALIASES: dict[str, str] = {
     "Côte d'Ivoire": "Ivory Coast",
     "Curaçao": "Curacao",
     "Bosnia and Herzegovina": "Bosnia and Herzegovina",
+    "Bosnia-Herzegovina": "Bosnia and Herzegovina",
 }
 
 
@@ -118,6 +119,26 @@ def fetch_live_matches(api_key: str) -> tuple[list[dict], str | None]:
 
     # Only surface an error when we have nothing to show
     return results, (first_error if not results else None)
+
+
+def fetch_finished_matches(api_key: str) -> list[dict]:
+    """Return all FINISHED WC 2026 matches from the API.
+
+    Used to supplement the community CSV dataset, which can lag by hours.
+    """
+    aliases = _alias_map()
+    try:
+        with requests.Session() as session:
+            session.headers.update(_headers(api_key))
+            resp = session.get(
+                f"{_BASE}/competitions/{_COMPETITION}/matches",
+                params={"status": "FINISHED"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return [_parse_match(m, aliases) for m in resp.json().get("matches", [])]
+    except Exception:
+        return []
 
 
 def fetch_todays_matches(api_key: str) -> list[dict]:
