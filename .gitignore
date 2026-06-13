@@ -3,4 +3,4 @@ __pycache__/
 *.pyc
 data/raw/
 models/
-.streamlit/
+.streamlit/secrets.toml
