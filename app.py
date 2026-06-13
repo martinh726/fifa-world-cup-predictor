@@ -1,5 +1,6 @@
 """2026 FIFA World Cup predictor — Streamlit dashboard."""
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -10,7 +11,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.data_loader import download_data, load_results, load_shootouts, load_wc2026
-from src.predict import MatchPredictor
+from src.livefeed import fetch_live_matches, fetch_todays_matches, get_api_key
+from src.predict import MatchPredictor, ingame_probs
 from src.simulate import TournamentSimulator
 from src.tournament import split_real_results, standings
 
@@ -21,27 +23,37 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 @st.cache_resource(show_spinner="Loading data and models...")
 def load_everything(refresh_token: int):
-    download_data()  # no-op if files already exist
+    download_data()
     config = load_wc2026()
     results = load_results(download=False)
-    predictor = MatchPredictor(results=results)
     shootouts = load_shootouts()
     group_results, ko_results = split_real_results(results, shootouts, config)
-    return config, results, predictor, group_results, ko_results
+    return config, results, group_results, ko_results
+
+
+@st.cache_resource(show_spinner="Building predictor...")
+def get_predictor(refresh_token: int, squad_strength: float):
+    _, results, _, _ = load_everything(refresh_token)
+    return MatchPredictor(results=results, squad_adjustment_strength=squad_strength)
 
 
 @st.cache_resource(show_spinner="Building the simulator (predicting every possible pairing)...")
-def get_simulator(refresh_token: int, n_sims: int):
-    config, _, predictor, _, _ = load_everything(refresh_token)
+def get_simulator(refresh_token: int, n_sims: int, squad_strength: float):
+    config, _, _, _ = load_everything(refresh_token)
+    predictor = get_predictor(refresh_token, squad_strength)
     return TournamentSimulator(predictor, config, n_sims=n_sims)
 
 
-if "refresh_token" not in st.session_state:
-    st.session_state.refresh_token = 0
-if "manual_results" not in st.session_state:
-    st.session_state.manual_results = []
+# ── Session state defaults ──────────────────────────────────────────────────
+for key, default in [
+    ("refresh_token", 0),
+    ("manual_results", []),
+    ("injuries", {}),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-config, results, predictor, group_results, ko_results = load_everything(st.session_state.refresh_token)
+config, results, group_results, ko_results = load_everything(st.session_state.refresh_token)
 WC_TEAMS = sorted(t for g in config["groups"].values() for t in g)
 GROUP_OF = {t: g for g, ts in config["groups"].items() for t in ts}
 FLAGS = config["flags"]
@@ -54,10 +66,11 @@ def flag_url(team: str, width: int = 40) -> str:
 
 FLAG_COL = st.column_config.ImageColumn("", width=40)
 
+# ── Sidebar ─────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("⚽ WC 2026 Predictor")
-    st.caption(f"Results data through **{results['date'].max().date()}** · "
-               f"model trained through **{predictor.trained_through}**")
+    st.caption(f"Results data through **{results['date'].max().date()}**")
+
     if st.button("🔄 Refresh latest results", width="stretch"):
         download_data(force=True)
         st.session_state.refresh_token += 1
@@ -65,14 +78,26 @@ with st.sidebar:
         st.rerun()
     st.caption("Pulls the newest match results from GitHub. Retrain with "
                "`python -m src.train` every few days for best accuracy.")
+
+    st.divider()
+    st.markdown("#### Squad quality adjustment")
+    squad_strength = st.slider(
+        "Adjustment strength", 0.0, 0.50, 0.18, 0.02,
+        help="How much squad quality (market value, FIFA rank, league index, "
+             "coach record, caps) nudges the model's raw probabilities. "
+             "0 = model-only. 0.18 ≈ 6 pp shift for a 2-sigma quality gap.")
+
     report_path = PROJECT_ROOT / "reports" / "backtest.md"
     if report_path.exists():
         with st.expander("📊 Model accuracy (backtest)"):
             st.markdown(report_path.read_text(encoding="utf-8"))
 
-tab_match, tab_sim, tab_live = st.tabs(["🎯 Match Predictor", "🏆 Tournament Simulator", "📡 Live Tracker"])
+predictor = get_predictor(st.session_state.refresh_token, squad_strength)
 
-# ---------------------------------------------------------------- match tab
+tab_match, tab_sim, tab_live_game, tab_live = st.tabs(
+    ["🎯 Match Predictor", "🏆 Tournament Simulator", "🔴 Live", "📡 Live Tracker"])
+
+# ─────────────────────────────────────────── Match Predictor tab ────────────
 with tab_match:
     col1, col2 = st.columns(2)
     home = col1.selectbox("Team 1", WC_TEAMS, index=WC_TEAMS.index("Argentina"))
@@ -90,8 +115,10 @@ with tab_match:
         else:
             neutral = True
 
-        pred = predictor.predict(home, away, neutral=neutral)
+        injuries = st.session_state.injuries
+        pred = predictor.predict(home, away, neutral=neutral, injuries=injuries)
 
+        # ── Flag banner ───────────────────────────────────────────────────
         st.markdown(
             f'<div style="display:flex;justify-content:center;align-items:center;'
             f'gap:18px;margin:6px 0 14px 0;">'
@@ -102,6 +129,7 @@ with tab_match:
             f'style="border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.3);">'
             f'</div>', unsafe_allow_html=True)
 
+        # ── Win probabilities ─────────────────────────────────────────────
         m1, m2, m3, m4 = st.columns(4)
         m1.metric(f"{home} win", f"{pred['p_home']:.1%}")
         m2.metric("Draw", f"{pred['p_draw']:.1%}")
@@ -118,9 +146,67 @@ with tab_match:
                           xaxis_tickformat=".0%", showlegend=False)
         st.plotly_chart(bar, width="stretch")
 
+        if squad_strength > 0:
+            st.caption("_Probabilities adjusted for squad quality + active injury overrides._")
+
+        # ── Squad comparison card ────────────────────────────────────────
+        with st.expander("🧑‍🤝‍🧑 Squad comparison", expanded=True):
+            labels = ["Squad value (€M)", "FIFA ranking", "Top-5 league players",
+                      "Avg. intl. caps", "Coach win rate"]
+            h_vals = [pred.get("squad_value_home"), pred.get("fifa_rank_home"),
+                      pred.get("league_idx_home"), pred.get("avg_caps_home"),
+                      pred.get("coach_wr_home")]
+            a_vals = [pred.get("squad_value_away"), pred.get("fifa_rank_away"),
+                      pred.get("league_idx_away"), pred.get("avg_caps_away"),
+                      pred.get("coach_wr_away")]
+
+            def _fmt(label, val):
+                if val is None:
+                    return "—"
+                if label == "FIFA ranking":
+                    return f"#{int(val)}"
+                if label in ("Top-5 league players", "Coach win rate"):
+                    return f"{val:.0%}"
+                if label == "Squad value (€M)":
+                    return f"€{int(val):,}M"
+                return str(val)
+
+            def _delta_color(label, h, a):
+                if h is None or a is None:
+                    return None, None
+                home_better = (h < a) if label == "FIFA ranking" else (h > a)
+                return ("#16a34a" if home_better else "#dc2626",
+                        "#dc2626" if home_better else "#16a34a")
+
+            inj_h = injuries.get(home, 0)
+            inj_a = injuries.get(away, 0)
+            inj_note = []
+            if inj_h:
+                inj_note.append(f"{home}: {inj_h} key player(s) out")
+            if inj_a:
+                inj_note.append(f"{away}: {inj_a} key player(s) out")
+            if inj_note:
+                st.caption("Injuries active — " + " · ".join(inj_note))
+
+            sc1, sc2, sc3 = st.columns([2, 2, 2])
+            sc1.markdown(f"**{home}**")
+            sc2.markdown("**Metric**")
+            sc3.markdown(f"**{away}**")
+            for label, hv, av in zip(labels, h_vals, a_vals):
+                hc, ac = _delta_color(label, hv, av)
+                sc1.markdown(
+                    f'<span style="color:{hc or "#111"};font-weight:600">{_fmt(label, hv)}</span>',
+                    unsafe_allow_html=True)
+                sc2.markdown(f"<span style='color:#6b7280'>{label}</span>",
+                             unsafe_allow_html=True)
+                sc3.markdown(
+                    f'<span style="color:{ac or "#111"};font-weight:600">{_fmt(label, av)}</span>',
+                    unsafe_allow_html=True)
+
+        # ── Scoreline heatmap + top scores ───────────────────────────────
         c1, c2 = st.columns([3, 2])
         with c1:
-            show = 7  # display 0..6 goals
+            show = 7
             mat = pred["score_matrix"][:show, :show]
             heat = px.imshow(mat, x=list(range(show)), y=list(range(show)),
                              labels=dict(x=f"{away} goals", y=f"{home} goals", color="prob"),
@@ -135,18 +221,18 @@ with tab_match:
             st.markdown("**Elo ratings**")
             st.markdown(f"{home}: **{pred['elo_home']:.0f}** · {away}: **{pred['elo_away']:.0f}**")
 
-# ------------------------------------------------------------- simulator tab
+# ─────────────────────────────────────────── Tournament Simulator tab ────────
 with tab_sim:
     left, right = st.columns([1, 3])
     with left:
         n_sims = st.select_slider("Simulations", options=[2000, 5000, 10000, 20000], value=10000)
         use_live = st.toggle("Lock in real results", value=True,
-                             help="Played matches (plus any you entered manually) are fixed; "
+                             help="Played matches (plus manual entries) are fixed; "
                                   "only the remaining tournament is simulated.")
         run = st.button("▶ Run simulation", type="primary", width="stretch")
 
     if run:
-        sim = get_simulator(st.session_state.refresh_token, n_sims)
+        sim = get_simulator(st.session_state.refresh_token, n_sims, squad_strength)
         locked = (group_results + st.session_state.manual_results) if use_live else []
         kos = ko_results if use_live else []
         with st.spinner(f"Simulating the tournament {n_sims:,} times..."):
@@ -188,7 +274,203 @@ with tab_sim:
                                           cmap="Blues", vmin=0, vmax=1),
                      width="stretch", hide_index=True, column_config={"flag": FLAG_COL})
 
-# ------------------------------------------------------------------ live tab
+# ─────────────────────────────────────────── Live tab ───────────────────────
+with tab_live_game:
+    LIVE_REFRESH_SECS = 30
+    api_key = get_api_key()
+
+    if not api_key:
+        st.warning("**API key not configured.** To enable live scores:", icon="🔑")
+        st.markdown(
+            "1. Sign up free at [football-data.org](https://www.football-data.org/)\n"
+            "2. Copy `.streamlit/secrets.toml.example` → `.streamlit/secrets.toml`\n"
+            "3. Paste your key and restart the app.")
+        st.stop()
+
+    # ── Auto-refresh every 30 s while on this tab ────────────────────────
+    now = time.time()
+    last_fetch = st.session_state.get("last_live_fetch", 0)
+    if now - last_fetch > LIVE_REFRESH_SECS:
+        matches, err = fetch_live_matches(api_key)
+        st.session_state.live_matches = matches
+        st.session_state.live_error = err
+        st.session_state.last_live_fetch = now
+
+    live_matches = st.session_state.get("live_matches", [])
+
+    col_hdr, col_btn = st.columns([5, 1])
+    with col_hdr:
+        secs_ago = int(now - st.session_state.get("last_live_fetch", now))
+        st.caption(f"Auto-refreshes every {LIVE_REFRESH_SECS}s · last updated {secs_ago}s ago")
+    with col_btn:
+        if st.button("🔄 Refresh now"):
+            matches, err = fetch_live_matches(api_key)
+            st.session_state.live_matches = matches
+            st.session_state.live_error = err
+            st.session_state.last_live_fetch = time.time()
+            st.rerun()
+
+    if st.session_state.get("live_error"):
+        st.warning(f"API: {st.session_state.live_error}", icon="⚠️")
+
+    if live_matches:
+        st.markdown(f"### {len(live_matches)} match{'es' if len(live_matches) > 1 else ''} in progress")
+        for match in live_matches:
+            home_t = match["home"]
+            away_t = match["away"]
+            gh = match["score_home"]
+            ga = match["score_away"]
+            minute = match["minute"]
+            status = match["status"]
+            match_key = f"{home_t}v{away_t}"
+
+            # minute label
+            if status == "PAUSED":
+                min_label = "HT"
+                display_min = 45
+            elif status in ("EXTRA_TIME",):
+                min_label = f"{minute}' (ET)"
+                display_min = minute
+            elif status == "PENALTY_SHOOTOUT":
+                min_label = "Pens"
+                display_min = 120
+            else:
+                min_label = f"{minute}'"
+                display_min = minute
+
+            # Get pre-match lambdas (cached per match)
+            pm_key = f"prematch_{match_key}"
+            if pm_key not in st.session_state:
+                try:
+                    pm = predictor.predict(home_t, away_t, neutral=True,
+                                          injuries=st.session_state.injuries)
+                    st.session_state[pm_key] = pm
+                except Exception:
+                    st.session_state[pm_key] = None
+
+            pm = st.session_state[pm_key]
+
+            with st.container(border=True):
+                # ── Score banner ─────────────────────────────────────────
+                st.markdown(
+                    f'<div style="display:flex;justify-content:center;align-items:center;'
+                    f'gap:14px;margin:4px 0 10px 0;">'
+                    f'<img src="{flag_url(home_t, 80)}" width="48" '
+                    f'style="border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);">'
+                    f'<span style="font-size:2rem;font-weight:800;">{gh}</span>'
+                    f'<span style="font-size:1.1rem;color:#6b7280;padding:0 4px;">–</span>'
+                    f'<span style="font-size:2rem;font-weight:800;">{ga}</span>'
+                    f'<img src="{flag_url(away_t, 80)}" width="48" '
+                    f'style="border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);">'
+                    f'</div>'
+                    f'<div style="text-align:center;font-size:0.95rem;color:#374151;margin-bottom:8px;">'
+                    f'<b>{home_t}</b> &nbsp;vs&nbsp; <b>{away_t}</b> &nbsp;'
+                    f'<span style="background:#ef4444;color:#fff;border-radius:4px;'
+                    f'padding:1px 7px;font-size:0.8rem;">● {min_label}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+                if pm is None:
+                    st.warning(f"Could not generate pre-match prediction for {home_t} vs {away_t}.")
+                    continue
+
+                # ── In-game probabilities ────────────────────────────────
+                extra = 5 if display_min >= 90 else (3 if display_min >= 45 else 0)
+                live_p = ingame_probs(
+                    pm["lambda_home"], pm["lambda_away"],
+                    gh, ga, display_min, extra_min=extra)
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric(f"{home_t} win", f"{live_p['p_home']:.1%}")
+                m2.metric("Draw", f"{live_p['p_draw']:.1%}")
+                m3.metric(f"{away_t} win", f"{live_p['p_away']:.1%}")
+
+                bar = go.Figure(go.Bar(
+                    x=[live_p["p_home"], live_p["p_draw"], live_p["p_away"]],
+                    y=[f"{home_t} win", "Draw", f"{away_t} win"],
+                    orientation="h",
+                    marker_color=["#2563eb", "#9ca3af", "#dc2626"],
+                    text=[f"{p:.1%}" for p in
+                          (live_p["p_home"], live_p["p_draw"], live_p["p_away"])],
+                    textposition="auto"))
+                bar.update_layout(height=180, margin=dict(l=0, r=0, t=8, b=8),
+                                  xaxis_tickformat=".0%", showlegend=False)
+                st.plotly_chart(bar, width="stretch")
+
+                # ── Win probability timeline ─────────────────────────────
+                history = st.session_state.setdefault("wpa_history", {})
+                pts = history.setdefault(match_key, [])
+                # Append a point only if the minute has advanced
+                if not pts or pts[-1][0] < display_min:
+                    pts.append((display_min, live_p["p_home"],
+                                live_p["p_draw"], live_p["p_away"]))
+
+                if len(pts) >= 2:
+                    mins  = [p[0] for p in pts]
+                    ph_ts = [p[1] for p in pts]
+                    pd_ts = [p[2] for p in pts]
+                    pa_ts = [p[3] for p in pts]
+                    timeline = go.Figure()
+                    timeline.add_trace(go.Scatter(
+                        x=mins, y=ph_ts, mode="lines+markers", name=f"{home_t} win",
+                        line=dict(color="#2563eb", width=2)))
+                    timeline.add_trace(go.Scatter(
+                        x=mins, y=pd_ts, mode="lines+markers", name="Draw",
+                        line=dict(color="#9ca3af", width=2, dash="dot")))
+                    timeline.add_trace(go.Scatter(
+                        x=mins, y=pa_ts, mode="lines+markers", name=f"{away_t} win",
+                        line=dict(color="#dc2626", width=2)))
+                    timeline.update_layout(
+                        title="Win probability over time",
+                        height=280, xaxis_title="Minute",
+                        yaxis_tickformat=".0%", yaxis_range=[0, 1],
+                        margin=dict(l=0, r=0, t=36, b=0),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02))
+                    st.plotly_chart(timeline, width="stretch")
+
+                # Pre-match context
+                with st.expander("Pre-match prediction", expanded=False):
+                    st.caption(
+                        f"Pre-match: {home_t} {pm['p_home']:.1%} / "
+                        f"Draw {pm['p_draw']:.1%} / {away_t} {pm['p_away']:.1%} · "
+                        f"xG {pm['lambda_home']:.2f}–{pm['lambda_away']:.2f} · "
+                        f"Elo {pm['elo_home']:.0f} vs {pm['elo_away']:.0f}")
+
+        # Schedule auto-rerun after LIVE_REFRESH_SECS
+        time.sleep(LIVE_REFRESH_SECS)
+        st.rerun()
+
+    else:
+        # No live matches — show today's schedule
+        st.info("No WC matches currently in progress.")
+        today_matches = fetch_todays_matches(api_key)
+        if today_matches:
+            st.markdown("#### Today's upcoming matches")
+            for match in today_matches:
+                home_t = match["home"]
+                away_t = match["away"]
+                utc = match["utc_date"][:16].replace("T", " ") + " UTC" if match["utc_date"] else ""
+                with st.container(border=True):
+                    st.markdown(
+                        f'<div style="display:flex;align-items:center;gap:12px;">'
+                        f'<img src="{flag_url(home_t, 40)}" width="32" style="border-radius:3px;">'
+                        f'<b>{home_t}</b> vs <b>{away_t}</b>'
+                        f'<img src="{flag_url(away_t, 40)}" width="32" style="border-radius:3px;">'
+                        f'<span style="color:#6b7280;font-size:0.85rem">{utc}</span>'
+                        f'</div>', unsafe_allow_html=True)
+                    try:
+                        pm = predictor.predict(home_t, away_t, neutral=True,
+                                              injuries=st.session_state.injuries)
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric(f"{home_t} win", f"{pm['p_home']:.1%}")
+                        c2.metric("Draw", f"{pm['p_draw']:.1%}")
+                        c3.metric(f"{away_t} win", f"{pm['p_away']:.1%}")
+                    except Exception:
+                        st.caption("Could not generate prediction for this fixture.")
+        else:
+            st.caption("No WC matches scheduled for today either.")
+
+# ─────────────────────────────────────────── Live Tracker tab ───────────────
 with tab_live:
     st.markdown(f"#### Played 2026 World Cup matches ({len(group_results) + len(ko_results)})")
     all_played = group_results + st.session_state.manual_results
@@ -210,22 +492,23 @@ with tab_live:
             teams = config["groups"][letter]
             ms = [m for m in all_played if GROUP_OF[m[0]] == letter]
             order = standings(teams, ms)
-            stats = {t: [0, 0, 0, 0] for t in teams}  # P, pts, gd, gf
+            stats_tbl = {t: [0, 0, 0, 0] for t in teams}
             for t1, t2, s1, s2 in ms:
                 for t, gf_, ga_ in ((t1, s1, s2), (t2, s2, s1)):
-                    stats[t][0] += 1
-                    stats[t][1] += 3 if gf_ > ga_ else (1 if gf_ == ga_ else 0)
-                    stats[t][2] += gf_ - ga_
-                    stats[t][3] += gf_
-            tbl = pd.DataFrame([[flag_url(t), t, *stats[t]] for t in order],
+                    stats_tbl[t][0] += 1
+                    stats_tbl[t][1] += 3 if gf_ > ga_ else (1 if gf_ == ga_ else 0)
+                    stats_tbl[t][2] += gf_ - ga_
+                    stats_tbl[t][3] += gf_
+            tbl = pd.DataFrame([[flag_url(t), t, *stats_tbl[t]] for t in order],
                                columns=["flag", "team", "P", "Pts", "GD", "GF"])
             with cols[i % len(cols)]:
                 st.markdown(f"**Group {letter}**")
                 st.dataframe(tbl, width="stretch", hide_index=True,
                              column_config={"flag": FLAG_COL})
 
+    # ── Manual result entry ──────────────────────────────────────────────
     st.markdown("#### Enter a result manually")
-    st.caption("Fallback for when the dataset hasn't been updated yet. "
+    st.caption("Fallback for when the dataset hasn't updated yet. "
                "Manual results are locked into simulations alongside real ones.")
     with st.form("manual_result", clear_on_submit=True):
         c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 3, 2])
@@ -238,8 +521,8 @@ with tab_live:
         if t1 == t2:
             st.error("Pick two different teams.")
         elif GROUP_OF[t1] != GROUP_OF[t2]:
-            st.error("Manual entry currently supports group-stage matches only "
-                     "(the two teams must be in the same group).")
+            st.error("Manual entry supports group-stage matches only "
+                     "(both teams must be in the same group).")
         else:
             st.session_state.manual_results.append((t1, t2, int(s1), int(s2)))
             st.rerun()
@@ -247,4 +530,38 @@ with tab_live:
         st.write(f"{len(st.session_state.manual_results)} manual result(s) active.")
         if st.button("Clear manual results"):
             st.session_state.manual_results = []
+            st.rerun()
+
+    # ── Injury / suspension overrides ────────────────────────────────────
+    st.divider()
+    st.markdown("#### Key player absences (injury/suspension overrides)")
+    st.caption(
+        "Each key player marked out reduces that team's effective squad value by ~€30M "
+        "when computing the squad quality adjustment. "
+        "Use the sidebar slider to control overall adjustment strength.")
+
+    inj_cols = st.columns(4)
+    new_injuries: dict[str, int] = {}
+    for idx, team in enumerate(WC_TEAMS):
+        current = st.session_state.injuries.get(team, 0)
+        val = inj_cols[idx % 4].number_input(
+            team, min_value=0, max_value=11, value=current, step=1,
+            key=f"inj_{team}")
+        if val > 0:
+            new_injuries[team] = val
+
+    if st.button("Apply injury overrides", type="primary"):
+        st.session_state.injuries = new_injuries
+        if new_injuries:
+            st.success("Overrides saved: "
+                       + ", ".join(f"{t} ({n} out)" for t, n in new_injuries.items()))
+        else:
+            st.success("All injury overrides cleared.")
+        st.rerun()
+
+    if st.session_state.injuries:
+        active = st.session_state.injuries
+        st.caption("Active: " + " · ".join(f"**{t}** {n} out" for t, n in active.items()))
+        if st.button("Clear all overrides"):
+            st.session_state.injuries = {}
             st.rerun()
