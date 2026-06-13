@@ -23,6 +23,7 @@ from sklearn.preprocessing import StandardScaler
 
 from src.data_loader import load_results
 from src.elo import compute_elo
+from src.external_data import load_city_altitude
 from src.features import FEATURES, build_match_features, swap_orientation
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -226,7 +227,8 @@ def main():
     print("Loading data + computing Elo...")
     results = load_results()
     results_elo, _ = compute_elo(results)
-    feats = build_match_features(results_elo)
+    city_alt = load_city_altitude()
+    feats = build_match_features(results_elo, city_altitude=city_alt)
     print(f"Training table: {len(feats):,} matches ({feats['date'].min().date()} .. {feats['date'].max().date()})")
 
     print("Backtesting on World Cups 2014/2018/2022...")

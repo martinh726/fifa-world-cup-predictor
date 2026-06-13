@@ -19,6 +19,7 @@ FEATURES = [
     "rest_home", "rest_away",
     "h2h_ppg_home", "h2h_n",
     "importance", "neutral",
+    "altitude_m",
 ]
 
 _ROLL_COLS = ["gf5", "ga5", "ppg5", "gf10", "ga10", "ppg10", "ppg25"]
@@ -83,11 +84,13 @@ def _h2h(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def build_match_features(df: pd.DataFrame, min_year: int = 1990) -> pd.DataFrame:
+def build_match_features(df: pd.DataFrame, min_year: int = 1990,
+                          city_altitude: dict | None = None) -> pd.DataFrame:
     """Build the training table from results that already carry pre-match Elo columns.
 
     Returns one row per match with FEATURES, plus targets:
     outcome (0=home win, 1=draw, 2=away win), home_score, away_score, date, teams.
+    city_altitude: optional {city: metres} lookup; if None, altitude_m is 0 for all rows.
     """
     long = _add_rolling(_long_format(df), shifted=True)
     home_side = long[long["is_home"]].set_index("midx")
@@ -105,6 +108,10 @@ def build_match_features(df: pd.DataFrame, min_year: int = 1990) -> pd.DataFrame
     feat[["h2h_ppg_home", "h2h_ppg_away", "h2h_n"]] = _h2h(df)
     feat["importance"] = df["tournament"].map(lambda t: IMPORTANCE[k_factor(t)])
     feat["neutral"] = df["neutral"].astype(int)
+    if city_altitude and "city" in df.columns:
+        feat["altitude_m"] = df["city"].map(lambda c: city_altitude.get(c, 0.0))
+    else:
+        feat["altitude_m"] = 0.0
 
     feat["outcome"] = np.select(
         [df.home_score > df.away_score, df.home_score == df.away_score], [0, 1], 2)
@@ -157,8 +164,11 @@ def h2h_lookup(df: pd.DataFrame, team_a: str, team_b: str) -> tuple[float, float
 
 def make_future_row(home: str, away: str, stats: pd.DataFrame, ratings: dict[str, float],
                     h2h: tuple[float, float], neutral: bool, as_of: pd.Timestamp,
-                    importance: int = 4) -> dict:
-    """Single feature row for a hypothetical future match."""
+                    importance: int = 4, altitude: float = 0.0) -> dict:
+    """Single feature row for a hypothetical future match.
+
+    altitude: metres above sea level for the match venue (0 = sea level / unknown).
+    """
     row: dict = {
         "elo_home": ratings.get(home, 1500.0),
         "elo_away": ratings.get(away, 1500.0),
@@ -166,6 +176,7 @@ def make_future_row(home: str, away: str, stats: pd.DataFrame, ratings: dict[str
         "neutral": int(neutral),
         "h2h_ppg_home": h2h[0],
         "h2h_n": h2h[1],
+        "altitude_m": float(altitude),
     }
     row["elo_diff"] = row["elo_home"] - row["elo_away"]
     for side, team in (("home", home), ("away", away)):
