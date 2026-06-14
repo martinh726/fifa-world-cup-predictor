@@ -7,7 +7,7 @@ and paste your key. Get one free at https://www.football-data.org/
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, datetime, timezone
 
 import requests
 
@@ -49,6 +49,31 @@ def _headers(api_key: str) -> dict:
     return {"X-Auth-Token": api_key}
 
 
+_HT_BREAK_MIN = 15   # assumed half-time break length
+_HT_BUFFER_MIN = 47  # first half ends ~45+2 stoppage before HT whistle
+
+
+def _estimate_minute(utc_date_str: str, status: str) -> int:
+    """Estimate match minute from scheduled kick-off time.
+
+    The free tier of football-data.org does not return a live minute field,
+    so we derive it from elapsed real time since kick-off, subtracting the
+    half-time break once first-half stoppage has been accounted for.
+    """
+    if not utc_date_str or status == "PAUSED":
+        return 45
+    try:
+        kickoff = datetime.fromisoformat(utc_date_str.replace("Z", "+00:00"))
+        elapsed = max(0.0, (datetime.now(timezone.utc) - kickoff).total_seconds() / 60)
+        if elapsed <= _HT_BUFFER_MIN:
+            return min(45, int(elapsed))
+        if elapsed <= _HT_BUFFER_MIN + _HT_BREAK_MIN:
+            return 45  # still in half-time break
+        return min(90, 45 + int(elapsed - _HT_BUFFER_MIN - _HT_BREAK_MIN))
+    except Exception:
+        return 0
+
+
 def _parse_match(m: dict, aliases: dict[str, str]) -> dict:
     """Extract the fields we care about from a football-data.org match object."""
     score = m.get("score", {})
@@ -61,11 +86,14 @@ def _parse_match(m: dict, aliases: dict[str, str]) -> dict:
     else:
         gh, ga = 0, 0
 
-    minute = m.get("minute") or 0
-    # football-data.org sometimes puts e.g. "90+3" in injuryTime field
-    injury = m.get("injuryTime") or 0
-    if minute >= 90:
-        minute = 90 + int(injury)
+    status = m.get("status", "UNKNOWN")
+    # Free tier returns minute=None; derive from elapsed kick-off time instead
+    api_minute = m.get("minute")
+    if api_minute is not None:
+        injury = m.get("injuryTime") or 0
+        minute = int(api_minute) + (int(injury) if int(api_minute) >= 90 else 0)
+    else:
+        minute = _estimate_minute(m.get("utcDate", ""), status)
 
     return {
         "id": m["id"],
@@ -73,8 +101,9 @@ def _parse_match(m: dict, aliases: dict[str, str]) -> dict:
         "away": _norm(m["awayTeam"]["name"], aliases),
         "score_home": int(gh),
         "score_away": int(ga),
-        "minute": int(minute),
-        "status": m.get("status", "UNKNOWN"),
+        "minute": minute,
+        "minute_estimated": api_minute is None,
+        "status": status,
         "utc_date": m.get("utcDate", ""),
     }
 
@@ -162,10 +191,82 @@ def fetch_todays_matches(api_key: str) -> list[dict]:
 
 
 def get_api_key() -> str | None:
-    """Read API key from Streamlit secrets or environment variable."""
+    """Read football-data.org API key from Streamlit secrets or environment variable."""
     try:
         import streamlit as st
         return st.secrets["football_data"]["api_key"]
     except Exception:
         pass
     return os.environ.get("FOOTBALL_DATA_API_KEY")
+
+
+# ── API-Football (RapidAPI) — exact live match minute ────────────────────────
+
+_AF_BASE = "https://v3.football.api-sports.io"
+_AF_WC_LEAGUE_ID = 1  # FIFA World Cup in API-Football
+
+# Extra aliases specific to API-Football's team name spellings
+_AF_ALIASES: dict[str, str] = {
+    "Korea Republic": "South Korea",
+    "United States": "United States",
+    "Bosnia And Herzegovina": "Bosnia and Herzegovina",
+    "Cape Verde Islands": "Cape Verde",
+    "DR Congo": "DR Congo",
+    "Ivory Coast": "Ivory Coast",
+    "Curacao": "Curacao",
+}
+
+
+def fetch_apifootball_live(api_key: str) -> list[dict]:
+    """Fetch live WC 2026 matches from API-Football (RapidAPI).
+
+    Returns a dict keyed by '{home}v{away}' with exact match minute.
+    Only counts as 1 request — call at most every 10 minutes.
+    """
+    aliases = {**_alias_map(), **_AF_ALIASES}
+    try:
+        resp = requests.get(
+            f"{_AF_BASE}/fixtures",
+            params={"live": "all"},
+            headers={"x-apisports-key": api_key},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        results: dict[str, dict] = {}
+        for f in resp.json().get("response", []):
+            league = f.get("league", {})
+            # Filter to FIFA World Cup only
+            if league.get("id") != _AF_WC_LEAGUE_ID and "World Cup" not in league.get("name", ""):
+                continue
+            status_info = f.get("fixture", {}).get("status", {})
+            short = status_info.get("short", "")
+            # Only active live statuses
+            if short not in ("1H", "2H", "HT", "ET", "P", "BT"):
+                continue
+            teams = f.get("teams", {})
+            goals = f.get("goals", {})
+            home = _norm(teams.get("home", {}).get("name", ""), aliases)
+            away = _norm(teams.get("away", {}).get("name", ""), aliases)
+            minute = status_info.get("elapsed") or 0
+            key = f"{home}v{away}"
+            results[key] = {
+                "home": home,
+                "away": away,
+                "score_home": goals.get("home") or 0,
+                "score_away": goals.get("away") or 0,
+                "minute": int(minute),
+                "status_short": short,
+            }
+        return results
+    except Exception:
+        return {}
+
+
+def get_apifootball_key() -> str | None:
+    """Read API-Football (RapidAPI) key from Streamlit secrets or environment variable."""
+    try:
+        import streamlit as st
+        return st.secrets["apifootball"]["api_key"]
+    except Exception:
+        pass
+    return os.environ.get("APIFOOTBALL_API_KEY")

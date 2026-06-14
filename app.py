@@ -11,7 +11,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.data_loader import download_data, load_results, load_shootouts, load_wc2026
-from src.livefeed import fetch_finished_matches, fetch_live_matches, fetch_todays_matches, get_api_key
+from src.livefeed import (fetch_apifootball_live, fetch_finished_matches, fetch_live_matches,
+                          fetch_todays_matches, get_api_key, get_apifootball_key)
 from src.predict import MatchPredictor, ingame_probs
 from src.simulate import TournamentSimulator
 from src.tournament import split_real_results, standings
@@ -59,7 +60,8 @@ GROUP_OF = {t: g for g, ts in config["groups"].items() for t in ts}
 FLAGS = config["flags"]
 
 
-FINISHED_REFRESH_SECS = 300  # re-query API every 5 minutes
+FINISHED_REFRESH_SECS = 300    # re-query finished matches every 5 minutes
+APIFOOTBALL_REFRESH_SECS = 600  # exact minute fetch every 10 minutes (~6 req/match)
 
 
 def _merge_api_finished(group_results, ko_results, api_matches, cfg):
@@ -124,6 +126,7 @@ predictor = get_predictor(st.session_state.refresh_token, squad_strength)
 
 # ── Pull finished matches from API and merge into CSV results (5-min TTL) ───
 api_key = get_api_key()
+af_key = get_apifootball_key()
 if api_key:
     _now = time.time()
     if _now - st.session_state.get("finished_fetch_time", 0) > FINISHED_REFRESH_SECS:
@@ -331,9 +334,21 @@ with tab_live_game:
             matches, err = fetch_live_matches(api_key)
             st.session_state.live_matches = matches
 
+            # ── Fetch exact minutes from API-Football every 10 min ───────
+            # Only fires when there are live matches — preserves the 100 req/day limit.
+            if af_key and matches:
+                _now = time.time()
+                if _now - st.session_state.get("af_fetch_time", 0) > APIFOOTBALL_REFRESH_SECS:
+                    st.session_state.af_matches = fetch_apifootball_live(af_key)
+                    st.session_state.af_fetch_time = _now
+
             col_hdr, col_btn = st.columns([5, 1])
             with col_hdr:
-                st.caption(f"Auto-refreshes every {LIVE_REFRESH_SECS}s")
+                if af_key:
+                    age = int(time.time() - st.session_state.get("af_fetch_time", time.time()))
+                    st.caption(f"Score: every {LIVE_REFRESH_SECS}s · Clock: exact (synced {age}s ago, next sync in {max(0, APIFOOTBALL_REFRESH_SECS - age)}s)")
+                else:
+                    st.caption(f"Auto-refreshes every {LIVE_REFRESH_SECS}s · Add API-Football key for exact match clock")
             with col_btn:
                 if st.button("🔄 Refresh now", key="live_refresh_btn"):
                     st.rerun(scope="fragment")
@@ -348,22 +363,31 @@ with tab_live_game:
                     away_t = match["away"]
                     gh = match["score_home"]
                     ga = match["score_away"]
-                    minute = match["minute"]
                     status = match["status"]
                     match_key = f"{home_t}v{away_t}"
 
+                    # ── Match clock ───────────────────────────────────────
+                    af_data = st.session_state.get("af_matches", {}).get(match_key)
+                    af_fetch_time = st.session_state.get("af_fetch_time", 0)
+
                     if status == "PAUSED":
-                        min_label = "HT"
+                        min_label   = "HT"
                         display_min = 45
                     elif status == "EXTRA_TIME":
-                        min_label = f"{minute}' (ET)"
-                        display_min = minute
+                        display_min = match["minute"]
+                        min_label   = f"{display_min}' (ET)"
                     elif status == "PENALTY_SHOOTOUT":
-                        min_label = "Pens"
+                        min_label   = "Pens"
                         display_min = 120
+                    elif af_data and af_data.get("minute") and af_fetch_time:
+                        # Exact baseline + real-time interpolation since last 10-min sync
+                        secs_since_sync = time.time() - af_fetch_time
+                        display_min = min(90, af_data["minute"] + int(secs_since_sync / 60))
+                        min_label   = f"{display_min}'"
                     else:
-                        min_label = f"{minute}'"
-                        display_min = minute
+                        # Fallback: estimate from UTC kick-off (shows ~ prefix)
+                        display_min = match["minute"]
+                        min_label   = f"~{display_min}'"
 
                     pm_key = f"prematch_{match_key}"
                     if pm_key not in st.session_state:
