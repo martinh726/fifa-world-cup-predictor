@@ -76,7 +76,7 @@ def _estimate_minute(utc_date_str: str, status: str) -> int:
             return 45  # still in half-time break
         return min(90, 45 + int(elapsed - _HT_BUFFER_MIN - _HT_BREAK_MIN))
     except Exception:
-        return 0
+        return 45
 
 
 def _parse_match(m: dict, aliases: dict[str, str]) -> dict:
