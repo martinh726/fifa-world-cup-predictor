@@ -141,9 +141,6 @@ if api_key:
         st.session_state.get("finished_matches_api", []),
         config,
     )
-    st.session_state["group_results_merged"] = group_results
-    st.session_state["ko_results_merged"] = ko_results
-
 tab_match, tab_sim, tab_live_game, tab_live = st.tabs(
     ["🎯 Match Predictor", "🏆 Tournament Simulator", "🔴 Live", "📡 Live Tracker"])
 
