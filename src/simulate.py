@@ -138,11 +138,16 @@ class TournamentSimulator:
         stage_teams: dict[str, list[np.ndarray]] = {"r32": [], "r16": [], "qf": [], "sf": [], "final": []}
 
         def stage_of_match(m: int) -> str:
-            if m <= 88: return "r32"
-            if m <= 96: return "r16"
-            if m <= 100: return "qf"
-            if m <= 102: return "sf"
-            if m == 104: return "final"
+            if m <= 88:
+                return "r32"
+            if m <= 96:
+                return "r16"
+            if m <= 100:
+                return "qf"
+            if m <= 102:
+                return "sf"
+            if m == 104:
+                return "final"
             # match 103 is the third-place playoff, which is not part of this simulation
             raise ValueError(f"unexpected match number {m}")
 
