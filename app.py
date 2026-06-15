@@ -1,4 +1,5 @@
 """2026 FIFA World Cup predictor — Streamlit dashboard."""
+import html
 import sys
 import time
 from pathlib import Path
@@ -104,6 +105,9 @@ with st.sidebar:
     if st.button("🔄 Refresh latest results", width="stretch"):
         download_data(force=True)
         st.session_state.refresh_token += 1
+        for _k in list(st.session_state.keys()):
+            if _k.startswith("prematch_"):
+                del st.session_state[_k]
         st.cache_resource.clear()
         st.rerun()
     st.caption("Pulls the newest match results from GitHub. Retrain with "
@@ -137,6 +141,8 @@ if api_key:
         st.session_state.get("finished_matches_api", []),
         config,
     )
+    st.session_state["group_results_merged"] = group_results
+    st.session_state["ko_results_merged"] = ko_results
 
 tab_match, tab_sim, tab_live_game, tab_live = st.tabs(
     ["🎯 Match Predictor", "🏆 Tournament Simulator", "🔴 Live", "📡 Live Tracker"])
@@ -163,13 +169,15 @@ with tab_match:
         pred = predictor.predict(home, away, neutral=neutral, injuries=injuries)
 
         # ── Flag banner ───────────────────────────────────────────────────
+        _home_esc = html.escape(home)
+        _away_esc = html.escape(away)
         st.markdown(
             f'<div style="display:flex;justify-content:center;align-items:center;'
             f'gap:18px;margin:6px 0 14px 0;">'
-            f'<img src="{flag_url(home, 80)}" width="64" '
+            f'<img src="{flag_url(home, 80)}" alt="{_home_esc}" width="64" '
             f'style="border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.3);">'
-            f'<span style="font-size:1.7rem;font-weight:700;">{home} &nbsp;vs&nbsp; {away}</span>'
-            f'<img src="{flag_url(away, 80)}" width="64" '
+            f'<span style="font-size:1.7rem;font-weight:700;">{_home_esc} &nbsp;vs&nbsp; {_away_esc}</span>'
+            f'<img src="{flag_url(away, 80)}" alt="{_away_esc}" width="64" '
             f'style="border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.3);">'
             f'</div>', unsafe_allow_html=True)
 
@@ -239,12 +247,12 @@ with tab_match:
             for label, hv, av in zip(labels, h_vals, a_vals):
                 hc, ac = _delta_color(label, hv, av)
                 sc1.markdown(
-                    f'<span style="color:{hc or "#111"};font-weight:600">{_fmt(label, hv)}</span>',
+                    f'<span style="color:{hc or "#9ca3af"};font-weight:600">{_fmt(label, hv)}</span>',
                     unsafe_allow_html=True)
                 sc2.markdown(f"<span style='color:#6b7280'>{label}</span>",
                              unsafe_allow_html=True)
                 sc3.markdown(
-                    f'<span style="color:{ac or "#111"};font-weight:600">{_fmt(label, av)}</span>',
+                    f'<span style="color:{ac or "#9ca3af"};font-weight:600">{_fmt(label, av)}</span>',
                     unsafe_allow_html=True)
 
         # ── Scoreline heatmap + top scores ───────────────────────────────
@@ -399,28 +407,32 @@ with tab_live_game:
                             st.session_state[pm_key] = None
                     pm = st.session_state[pm_key]
 
+                    if pm is None:
+                        with st.container(border=True):
+                            st.warning(f"Could not generate pre-match prediction for "
+                                       f"{html.escape(home_t)} vs {html.escape(away_t)}.")
+                        continue
+
+                    _ht_esc = html.escape(home_t)
+                    _at_esc = html.escape(away_t)
                     with st.container(border=True):
                         st.markdown(
                             f'<div style="display:flex;justify-content:center;align-items:center;'
                             f'gap:14px;margin:4px 0 10px 0;">'
-                            f'<img src="{flag_url(home_t, 80)}" width="48" '
+                            f'<img src="{flag_url(home_t, 80)}" alt="{_ht_esc}" width="48" '
                             f'style="border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);">'
                             f'<span style="font-size:2rem;font-weight:800;">{gh}</span>'
                             f'<span style="font-size:1.1rem;color:#6b7280;padding:0 4px;">–</span>'
                             f'<span style="font-size:2rem;font-weight:800;">{ga}</span>'
-                            f'<img src="{flag_url(away_t, 80)}" width="48" '
+                            f'<img src="{flag_url(away_t, 80)}" alt="{_at_esc}" width="48" '
                             f'style="border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.25);">'
                             f'</div>'
                             f'<div style="text-align:center;font-size:0.95rem;color:#374151;margin-bottom:8px;">'
-                            f'<b>{home_t}</b> &nbsp;vs&nbsp; <b>{away_t}</b> &nbsp;'
+                            f'<b>{_ht_esc}</b> &nbsp;vs&nbsp; <b>{_at_esc}</b> &nbsp;'
                             f'<span style="background:#ef4444;color:#fff;border-radius:4px;'
                             f'padding:1px 7px;font-size:0.8rem;">● {min_label}</span>'
                             f'</div>',
                             unsafe_allow_html=True)
-
-                        if pm is None:
-                            st.warning(f"Could not generate pre-match prediction for {home_t} vs {away_t}.")
-                            continue
 
                         extra = 5 if display_min >= 90 else (3 if display_min >= 45 else 0)
                         live_p = ingame_probs(
@@ -445,10 +457,14 @@ with tab_live_game:
                         st.plotly_chart(bar, width="stretch")
 
                         history = st.session_state.setdefault("wpa_history", {})
+                        current_keys = {f"{m['home']}v{m['away']}" for m in matches}
+                        for _stale in [k for k in history if k not in current_keys]:
+                            del history[_stale]
                         pts = history.setdefault(match_key, [])
                         if not pts or pts[-1][0] < display_min:
                             pts.append((display_min, live_p["p_home"],
                                         live_p["p_draw"], live_p["p_away"]))
+                        history[match_key] = pts[-200:]
 
                         if len(pts) >= 2:
                             mins  = [p[0] for p in pts]
@@ -489,12 +505,14 @@ with tab_live_game:
                         away_t = match["away"]
                         utc = match["utc_date"][:16].replace("T", " ") + " UTC" if match["utc_date"] else ""
                         with st.container(border=True):
+                            _ht_esc = html.escape(home_t)
+                            _at_esc = html.escape(away_t)
                             st.markdown(
                                 f'<div style="display:flex;align-items:center;gap:12px;">'
-                                f'<img src="{flag_url(home_t, 40)}" width="32" style="border-radius:3px;">'
-                                f'<b>{home_t}</b> vs <b>{away_t}</b>'
-                                f'<img src="{flag_url(away_t, 40)}" width="32" style="border-radius:3px;">'
-                                f'<span style="color:#6b7280;font-size:0.85rem">{utc}</span>'
+                                f'<img src="{flag_url(home_t, 40)}" alt="{_ht_esc}" width="32" style="border-radius:3px;">'
+                                f'<b>{_ht_esc}</b> vs <b>{_at_esc}</b>'
+                                f'<img src="{flag_url(away_t, 40)}" alt="{_at_esc}" width="32" style="border-radius:3px;">'
+                                f'<span style="color:#6b7280;font-size:0.85rem">{html.escape(utc)}</span>'
                                 f'</div>', unsafe_allow_html=True)
                             try:
                                 pm = predictor.predict(home_t, away_t, neutral=True,
@@ -576,6 +594,8 @@ with tab_live:
         elif GROUP_OF[t1] != GROUP_OF[t2]:
             st.error("Manual entry supports group-stage matches only "
                      "(both teams must be in the same group).")
+        elif frozenset((t1, t2)) in {frozenset((r[0], r[1])) for r in st.session_state.manual_results}:
+            st.warning("A result for this fixture is already entered. Clear it first.")
         else:
             st.session_state.manual_results.append((t1, t2, int(s1), int(s2)))
             st.rerun()
