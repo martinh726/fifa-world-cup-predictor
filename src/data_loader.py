@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import pandas as pd
 import requests
+
+_log = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
@@ -22,9 +25,18 @@ def download_data(force: bool = False) -> None:
         dest = RAW_DIR / name
         if dest.exists() and not force:
             continue
-        resp = requests.get(f"{BASE_URL}/{name}", timeout=60)
-        resp.raise_for_status()
-        dest.write_bytes(resp.content)
+        try:
+            resp = requests.get(f"{BASE_URL}/{name}", timeout=60)
+            resp.raise_for_status()
+            if len(resp.content) < 1024:
+                _log.warning("download_data: suspiciously small response for %s (%d bytes)", name, len(resp.content))
+                if dest.exists():
+                    continue
+            dest.write_bytes(resp.content)
+        except requests.RequestException as e:
+            _log.warning("download_data: failed to download %s: %s", name, e)
+            if not dest.exists():
+                raise
 
 
 def load_wc2026() -> dict:
