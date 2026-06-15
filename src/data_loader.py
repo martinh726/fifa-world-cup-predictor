@@ -28,7 +28,7 @@ def download_data(force: bool = False) -> None:
         try:
             resp = requests.get(f"{BASE_URL}/{name}", timeout=60)
             resp.raise_for_status()
-            if len(resp.content) < 1024:
+            if len(resp.content) < 1024:  # any valid CSV is many KB; this indicates an error page
                 _log.warning("download_data: suspiciously small response for %s (%d bytes)", name, len(resp.content))
                 if dest.exists():
                     continue
