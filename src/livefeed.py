@@ -6,12 +6,16 @@ and paste your key. Get one free at https://www.football-data.org/
 """
 from __future__ import annotations
 
+import functools
+import logging
 import os
 from datetime import date, datetime, timezone
 
 import requests
 
 from src.data_loader import load_wc2026
+
+_log = logging.getLogger(__name__)
 
 _BASE = "https://api.football-data.org/v4"
 _COMPETITION = "WC"
@@ -31,6 +35,7 @@ _EXTRA_ALIASES: dict[str, str] = {
 }
 
 
+@functools.lru_cache(maxsize=1)
 def _alias_map() -> dict[str, str]:
     config = load_wc2026()
     m: dict[str, str] = {}
@@ -166,7 +171,8 @@ def fetch_finished_matches(api_key: str) -> list[dict]:
             )
             resp.raise_for_status()
             return [_parse_match(m, aliases) for m in resp.json().get("matches", [])]
-    except Exception:
+    except Exception as e:
+        _log.warning("fetch_finished_matches failed: %s", e)
         return []
 
 
@@ -186,7 +192,8 @@ def fetch_todays_matches(api_key: str) -> list[dict]:
         # API returns TIMED records under SCHEDULED umbrella; filter out non-upcoming
         return [_parse_match(m, aliases) for m in matches
                 if m.get("status") in ("TIMED", "SCHEDULED")]
-    except Exception:
+    except Exception as e:
+        _log.warning("fetch_todays_matches failed: %s", e)
         return []
 
 
@@ -194,10 +201,12 @@ def get_api_key() -> str | None:
     """Read football-data.org API key from Streamlit secrets or environment variable."""
     try:
         import streamlit as st
-        return st.secrets["football_data"]["api_key"]
+        key = st.secrets["football_data"]["api_key"]
+        return key.strip() or None
     except Exception:
         pass
-    return os.environ.get("FOOTBALL_DATA_API_KEY")
+    key = os.environ.get("FOOTBALL_DATA_API_KEY")
+    return key.strip() if key else None
 
 
 # ── API-Football (RapidAPI) — exact live match minute ────────────────────────
@@ -217,10 +226,10 @@ _AF_ALIASES: dict[str, str] = {
 }
 
 
-def fetch_apifootball_live(api_key: str) -> list[dict]:
+def fetch_apifootball_live(api_key: str) -> dict[str, dict]:
     """Fetch live WC 2026 matches from API-Football (RapidAPI).
 
-    Returns a dict keyed by '{home}v{away}' with exact match minute.
+    Returns a dict keyed by '{home}v{away}' mapping to match info with exact minute.
     Only counts as 1 request — call at most every 10 minutes.
     """
     aliases = {**_alias_map(), **_AF_ALIASES}
@@ -258,7 +267,8 @@ def fetch_apifootball_live(api_key: str) -> list[dict]:
                 "status_short": short,
             }
         return results
-    except Exception:
+    except Exception as e:
+        _log.warning("fetch_apifootball_live failed: %s", e)
         return {}
 
 
@@ -266,7 +276,9 @@ def get_apifootball_key() -> str | None:
     """Read API-Football (RapidAPI) key from Streamlit secrets or environment variable."""
     try:
         import streamlit as st
-        return st.secrets["apifootball"]["api_key"]
+        key = st.secrets["apifootball"]["api_key"]
+        return key.strip() or None
     except Exception:
         pass
-    return os.environ.get("APIFOOTBALL_API_KEY")
+    key = os.environ.get("APIFOOTBALL_API_KEY")
+    return key.strip() if key else None
