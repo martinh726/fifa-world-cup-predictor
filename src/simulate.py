@@ -136,8 +136,15 @@ class TournamentSimulator:
                   self.config["quarterfinals"] + self.config["semifinals"] +
                   [self.config["final"]])
         stage_teams: dict[str, list[np.ndarray]] = {"r32": [], "r16": [], "qf": [], "sf": [], "final": []}
-        stage_of_match = lambda m: ("r32" if m <= 88 else "r16" if m <= 96 else
-                                    "qf" if m <= 100 else "sf" if m <= 102 else "final")
+
+        def stage_of_match(m: int) -> str:
+            if m <= 88: return "r32"
+            if m <= 96: return "r16"
+            if m <= 100: return "qf"
+            if m <= 102: return "sf"
+            if m == 104: return "final"
+            # match 103 is the third-place playoff, which is not part of this simulation
+            raise ValueError(f"unexpected match number {m}")
 
         for match in rounds:
             m = match["match"]
