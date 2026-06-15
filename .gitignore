@@ -11,3 +11,4 @@ scripts/debug_finished.py
 scripts/debug_minute.py
 scripts/debug_sofascore.py
 scripts/debug_apifootball.py
+tmp/
