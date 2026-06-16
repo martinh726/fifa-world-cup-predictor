@@ -15,7 +15,9 @@ Predicts individual match outcomes (win/draw/loss probabilities + scorelines) an
 ## Features
 
 ### 🎯 Match Predictor
+
 Pick any two teams and get:
+
 - Win / draw / loss probabilities
 - Scoreline heatmap and most likely exact scores
 - Expected goals (xG) for each side
@@ -24,20 +26,25 @@ Pick any two teams and get:
 - Injury / suspension overrides that reduce a team's effective squad quality
 
 ### 🏆 Tournament Simulator
+
 Monte Carlo simulation of the remaining bracket (2,000–20,000 runs):
+
 - Championship odds for all 48 teams
 - Per-stage advancement probabilities (Round of 32 through Final)
 - Group finishing positions
 - Real results locked in automatically; manual result entry as a fallback
 
 ### 🔴 Live (in-game win probability)
+
 Powered by the [football-data.org](https://www.football-data.org/) free API:
+
 - Auto-fetches live WC matches every 30 seconds (uses `@st.fragment` so only the live panel refreshes — the rest of the page stays stable)
 - Displays current score, minute, and real-time win probabilities computed from Poisson remaining-goals math
 - Win probability timeline chart that builds up as the match progresses
 - Falls back to today's scheduled matches with pre-match predictions when no game is live
 
 ### 📡 Live Tracker
+
 - All played 2026 WC matches synced from the API every 5 minutes (no manual refresh needed)
 - Current group standings with points, goal difference, and goals scored
 - Manual result entry for matches not yet in the dataset
@@ -46,6 +53,7 @@ Powered by the [football-data.org](https://www.football-data.org/) free API:
 ## Setup
 
 ### Basic (no live scores)
+
 ```powershell
 pip install -r requirements.txt
 python -m src.train        # train the model
@@ -53,6 +61,7 @@ streamlit run app.py
 ```
 
 ### With live scores
+
 1. Sign up free at [football-data.org](https://www.football-data.org/)
 2. Copy `.streamlit/secrets.toml.example` → `.streamlit/secrets.toml`
 3. Paste your API key and restart the app
@@ -95,3 +104,8 @@ data/wc2026.json      groups, bracket, team-name aliases
 data/squad_data.json  squad quality data for all 48 WC 2026 teams
 data/city_altitude.json  venue altitude lookup (120+ cities)
 ```
+
+## Future Changes
+
+-Add brackets for the tournament to see how eahc team would
+go against each other in the prediction
