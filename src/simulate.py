@@ -136,6 +136,7 @@ class TournamentSimulator:
                   self.config["quarterfinals"] + self.config["semifinals"] +
                   [self.config["final"]])
         stage_teams: dict[str, list[np.ndarray]] = {"r32": [], "r16": [], "qf": [], "sf": [], "final": []}
+        bracket_matches: dict[int, dict] = {}
 
         def stage_of_match(m: int) -> str:
             if m <= 88:
@@ -164,6 +165,17 @@ class TournamentSimulator:
                 winner[clash] = fw
             match_winner[m] = winner
             stage = stage_of_match(m)
+            n = len(self.teams)
+            ta_c = np.bincount(ta, minlength=n)
+            tb_c = np.bincount(tb, minlength=n)
+            w_c  = np.bincount(winner, minlength=n)
+            bracket_matches[m] = {
+                "match": m, "stage": stage,
+                "team1": self.teams[int(ta_c.argmax())],
+                "team2": self.teams[int(tb_c.argmax())],
+                "winner": self.teams[int(w_c.argmax())],
+                "win_prob": float(w_c.max()) / n_sims,
+            }
             if stage in ("r32",):
                 stage_teams["r32"].extend([ta, tb])
             # teams *appearing* in later rounds are recorded when produced as winners
@@ -185,7 +197,8 @@ class TournamentSimulator:
         summary["P(Champion)"] = np.bincount(champion, minlength=len(self.teams)) / n_sims
         summary = summary.sort_values("P(Champion)", ascending=False).reset_index(drop=True)
 
-        return {"summary": summary, "rank_probs": rank_probs, "n_sims": n_sims}
+        return {"summary": summary, "rank_probs": rank_probs, "n_sims": n_sims,
+                "bracket": bracket_matches}
 
 
 if __name__ == "__main__":
