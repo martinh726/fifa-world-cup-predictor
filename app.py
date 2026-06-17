@@ -97,6 +97,150 @@ def flag_url(team: str, width: int = 40) -> str:
 
 FLAG_COL = st.column_config.ImageColumn("", width=40)
 
+# ── Bracket helpers ──────────────────────────────────────────────────────────
+# Match numbers ordered to reflect the actual bracket tree left→right, top→bottom
+_BRACKET_ORDER = {
+    "r32":   [74, 77, 73, 75, 83, 84, 81, 82, 76, 78, 79, 80, 86, 88, 85, 87],
+    "r16":   [89, 90, 93, 94, 91, 92, 95, 96],
+    "qf":    [97, 98, 99, 100],
+    "sf":    [101, 102],
+    "final": [104],
+}
+_STAGE_LABEL = {
+    "r32": "Round of 32", "r16": "Round of 16",
+    "qf": "Quarter-finals", "sf": "Semi-finals", "final": "Final",
+}
+_STAGE_COLS = {"r32": 4, "r16": 4, "qf": 4, "sf": 2, "final": 1}
+_STAGE_MAP = (
+    {m["match"]: "r32" for m in config["round_of_32"]} |
+    {m["match"]: "r16" for m in config["round_of_16"]} |
+    {m["match"]: "qf"  for m in config["quarterfinals"]} |
+    {m["match"]: "sf"  for m in config["semifinals"]} |
+    {config["final"]["match"]: "final"}
+)
+
+
+def _match_card_html(t1: str, t2: str, winner: str | None,
+                     prob: float | None, flags: dict, actual: bool = False) -> str:
+    """Render a single knockout match card as an HTML string."""
+    def row(t: str, is_win: bool) -> str:
+        clean = t.rstrip("*")
+        code  = flags.get(clean, "")
+        flag  = (f'<img src="https://flagcdn.com/w20/{code}.png" alt="{html.escape(clean)}"'
+                 f' width="18" style="vertical-align:middle;margin-right:5px;">') if code else ""
+        if is_win:
+            bg, fg, fw = "#16a34a", "#fff", "font-weight:700;"
+            badge = (f' <span style="opacity:0.8;font-size:0.72rem;">({prob:.0%})</span>'
+                     if prob is not None and not actual else (" ✓" if actual else ""))
+        elif code:
+            bg, fg, fw, badge = "#1f2937", "#9ca3af", "", ""
+        else:
+            bg, fg, fw, badge = "#111827", "#4b5563", "font-style:italic;", ""
+        return (f'<div style="background:{bg};{fw}color:{fg};padding:5px 8px;'
+                f'border-radius:4px;font-size:0.82rem;">{flag}{html.escape(clean)}{badge}</div>')
+
+    t1c, t2c = t1.rstrip("*"), t2.rstrip("*")
+    w1 = bool(winner and winner == t1c and flags.get(t1c))
+    w2 = bool(winner and winner == t2c and flags.get(t2c))
+    return (
+        '<div style="border:1px solid #374151;border-radius:8px;'
+        'overflow:hidden;margin:3px 0;background:#111827;">'
+        + row(t1, w1)
+        + '<div style="height:1px;background:#374151;"></div>'
+        + row(t2, w2) + '</div>'
+    )
+
+
+def _show_bracket(bracket: dict, flags: dict, title: str = "🏟️ Bracket") -> None:
+    """Render a full knockout bracket round-by-round in Streamlit."""
+    st.markdown(f"### {title}")
+    for stage, order in _BRACKET_ORDER.items():
+        matches = [bracket[m] for m in order if m in bracket]
+        if not matches:
+            continue
+        st.markdown(f"**{_STAGE_LABEL[stage]}**")
+        cols = st.columns(_STAGE_COLS[stage])
+        for i, m in enumerate(matches):
+            with cols[i % _STAGE_COLS[stage]]:
+                st.markdown(
+                    _match_card_html(m["team1"], m["team2"], m.get("winner"),
+                                     m.get("win_prob"), flags, m.get("actual", False)),
+                    unsafe_allow_html=True,
+                )
+    # Champion banner
+    final = bracket.get(104)
+    if final and final.get("winner") and flags.get(final["winner"]):
+        w, code = final["winner"], flags[final["winner"]]
+        prob_str = (f" ({final['win_prob']:.0%})" if final.get("win_prob") else
+                    " ✓" if final.get("actual") else "")
+        st.markdown(
+            f'<div style="text-align:center;margin:14px 0;padding:14px;'
+            f'background:#16a34a;border-radius:12px;">'
+            f'<img src="https://flagcdn.com/w40/{code}.png" alt="{html.escape(w)}"'
+            f' width="36" style="vertical-align:middle;margin-right:10px;">'
+            f'<span style="font-size:1.25rem;font-weight:800;color:#fff;">'
+            f'🏆 Champion: {html.escape(w)}{prob_str}</span></div>',
+            unsafe_allow_html=True,
+        )
+
+
+def _build_live_bracket(group_results_all: list, ko_results_all: list) -> dict:
+    """Build bracket data from actual group standings and knockout results."""
+    group_of = GROUP_OF  # already computed at module level
+    group_match_count: dict[str, int] = {}
+    for t1, *_ in group_results_all:
+        g = group_of.get(t1)
+        if g:
+            group_match_count[g] = group_match_count.get(g, 0) + 1
+
+    group_order: dict[str, list[str]] = {}
+    for letter, teams in config["groups"].items():
+        ms = [m for m in group_results_all if group_of.get(m[0]) == letter]
+        if ms:
+            group_order[letter] = standings(teams, ms)
+
+    ko_won = {frozenset((t1, t2)): w for t1, t2, w in ko_results_all}
+    match_to_winner: dict[int, str] = {}
+
+    def resolve(slot: str) -> str:
+        if slot.startswith("1"):
+            g = slot[1:]
+            order = group_order.get(g, [])
+            done = group_match_count.get(g, 0) >= 6
+            if order:
+                return order[0] if done else order[0] + "*"
+            return f"1st Gp {g}"
+        if slot.startswith("2"):
+            g = slot[1:]
+            order = group_order.get(g, [])
+            done = group_match_count.get(g, 0) >= 6
+            if len(order) >= 2:
+                return order[1] if done else order[1] + "*"
+            return f"2nd Gp {g}"
+        if slot.startswith("3:"):
+            return "Best 3rd"
+        if slot.startswith("W"):
+            m = int(slot[1:])
+            return match_to_winner.get(m, f"W{m}")
+        return slot
+
+    bracket: dict[int, dict] = {}
+    all_ko = (config["round_of_32"] + config["round_of_16"] +
+              config["quarterfinals"] + config["semifinals"] + [config["final"]])
+    for match in all_ko:
+        m = match["match"]
+        t1, t2 = resolve(match["slot1"]), resolve(match["slot2"])
+        winner = ko_won.get(frozenset((t1.rstrip("*"), t2.rstrip("*"))))
+        if winner:
+            match_to_winner[m] = winner
+        bracket[m] = {
+            "match": m, "stage": _STAGE_MAP[m],
+            "team1": t1, "team2": t2,
+            "winner": winner, "win_prob": None, "actual": winner is not None,
+        }
+    return bracket
+
+
 # ── Sidebar ─────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("⚽ WC 2026 Predictor")
@@ -322,6 +466,9 @@ with tab_sim:
                      .background_gradient(subset=[c for c in rp.columns if c.startswith("P(")],
                                           cmap="Blues", vmin=0, vmax=1),
                      width="stretch", hide_index=True, column_config={"flag": FLAG_COL})
+
+        st.divider()
+        _show_bracket(out["bracket"], FLAGS, "🏟️ Simulated Bracket (most likely path)")
 
 # ─────────────────────────────────────────── Live tab ───────────────────────
 with tab_live_game:
@@ -573,6 +720,12 @@ with tab_live:
                 st.markdown(f"**Group {letter}**")
                 st.dataframe(tbl, width="stretch", hide_index=True,
                              column_config={"flag": FLAG_COL})
+
+        st.divider()
+        live_bracket = _build_live_bracket(
+            group_results + st.session_state.manual_results, ko_results
+        )
+        _show_bracket(live_bracket, FLAGS, "🏟️ Live Bracket")
 
     # ── Manual result entry ──────────────────────────────────────────────
     st.markdown("#### Enter a result manually")
