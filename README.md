@@ -32,6 +32,7 @@ Monte Carlo simulation of the remaining bracket (2,000–20,000 runs):
 - Championship odds for all 48 teams
 - Per-stage advancement probabilities (Round of 32 through Final)
 - Group finishing positions
+- **Simulated bracket** — shows the most likely matchup and winner for every R32–Final match with win probability badges, rendered round-by-round with flag icons
 - Real results locked in automatically; manual result entry as a fallback
 
 ### 🔴 Live (in-game win probability)
@@ -47,6 +48,7 @@ Powered by the [football-data.org](https://www.football-data.org/) free API:
 
 - All played 2026 WC matches synced from the API every 5 minutes (no manual refresh needed)
 - Current group standings with points, goal difference, and goals scored
+- **Live bracket** — visualizes every knockout match (R32 through Final) resolved from actual results; matches already decided show the confirmed winner, upcoming slots display the current group leader with a `*` while the group stage is ongoing
 - Manual result entry for matches not yet in the dataset
 - Injury / suspension override panel wired into every prediction
 
@@ -105,7 +107,3 @@ data/squad_data.json  squad quality data for all 48 WC 2026 teams
 data/city_altitude.json  venue altitude lookup (120+ cities)
 ```
 
-## Future Changes
-
--Add brackets for the tournament to see how eahc team would
-go against each other in the prediction
