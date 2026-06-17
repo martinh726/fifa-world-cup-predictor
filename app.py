@@ -10,6 +10,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from src.data_loader import download_data, load_results, load_shootouts, load_wc2026
 from src.livefeed import (fetch_apifootball_live, fetch_finished_matches, fetch_live_matches,
@@ -106,11 +107,6 @@ _BRACKET_ORDER = {
     "sf":    [101, 102],
     "final": [104],
 }
-_STAGE_LABEL = {
-    "r32": "Round of 32", "r16": "Round of 16",
-    "qf": "Quarter-finals", "sf": "Semi-finals", "final": "Final",
-}
-_STAGE_COLS = {"r32": 4, "r16": 4, "qf": 4, "sf": 2, "final": 1}
 _STAGE_MAP = (
     {m["match"]: "r32" for m in config["round_of_32"]} |
     {m["match"]: "r16" for m in config["round_of_16"]} |
@@ -120,65 +116,150 @@ _STAGE_MAP = (
 )
 
 
-def _match_card_html(t1: str, t2: str, winner: str | None,
-                     prob: float | None, flags: dict, actual: bool = False) -> str:
-    """Render a single knockout match card as an HTML string."""
-    def row(t: str, is_win: bool) -> str:
-        clean = t.rstrip("*")
-        code  = flags.get(clean, "")
-        flag  = (f'<img src="https://flagcdn.com/w20/{code}.png" alt="{html.escape(clean)}"'
-                 f' width="18" style="vertical-align:middle;margin-right:5px;">') if code else ""
-        if is_win:
-            bg, fg, fw = "#16a34a", "#fff", "font-weight:700;"
-            badge = (f' <span style="opacity:0.8;font-size:0.72rem;">({prob:.0%})</span>'
-                     if prob is not None and not actual else (" ✓" if actual else ""))
-        elif code:
-            bg, fg, fw, badge = "#1f2937", "#9ca3af", "", ""
-        else:
-            bg, fg, fw, badge = "#111827", "#4b5563", "font-style:italic;", ""
-        return (f'<div style="background:{bg};{fw}color:{fg};padding:5px 8px;'
-                f'border-radius:4px;font-size:0.82rem;">{flag}{html.escape(clean)}{badge}</div>')
-
-    t1c, t2c = t1.rstrip("*"), t2.rstrip("*")
-    w1 = bool(winner and winner == t1c and flags.get(t1c))
-    w2 = bool(winner and winner == t2c and flags.get(t2c))
-    return (
-        '<div style="border:1px solid #374151;border-radius:8px;'
-        'overflow:hidden;margin:3px 0;background:#111827;">'
-        + row(t1, w1)
-        + '<div style="height:1px;background:#374151;"></div>'
-        + row(t2, w2) + '</div>'
-    )
-
 
 def _show_bracket(bracket: dict, flags: dict, title: str = "🏟️ Bracket") -> None:
-    """Render a full knockout bracket round-by-round in Streamlit."""
+    """Render the full knockout bracket as SVG with proper bracket lines."""
+    CW, CH, RH, SEP = 155, 48, 22, 4
+    SLOT_H, GAP, PAD = 70, 45, 8
+    STEP = CW + GAP
+
+    r32L = _BRACKET_ORDER["r32"][:8]
+    r32R = _BRACKET_ORDER["r32"][8:]
+    r16L = _BRACKET_ORDER["r16"][:4]
+    r16R = _BRACKET_ORDER["r16"][4:]
+    qfL  = _BRACKET_ORDER["qf"][:2]
+    qfR  = _BRACKET_ORDER["qf"][2:]
+    sfL  = _BRACKET_ORDER["sf"][0]
+    sfR  = _BRACKET_ORDER["sf"][1]
+    fin  = _BRACKET_ORDER["final"][0]
+
+    r32_yc = [SLOT_H / 2 + i * SLOT_H for i in range(8)]
+    r16_yc = [(r32_yc[2 * i] + r32_yc[2 * i + 1]) / 2 for i in range(4)]
+    qf_yc  = [(r16_yc[2 * i] + r16_yc[2 * i + 1]) / 2 for i in range(2)]
+    sf_yc  = (qf_yc[0] + qf_yc[1]) / 2
+
+    canvas_h = int(r32_yc[-1] + SLOT_H / 2) + 28
+    xL = [PAD + i * STEP for i in range(4)]
+    x_fin = xL[3] + STEP + 20
+    xR = [x_fin + CW + 20 + GAP + i * STEP for i in range(4)]
+    canvas_w = xR[3] + CW + PAD
+
+    LC = "#f59e0b"
+
+    def ln(x1, y1, x2, y2):
+        return (f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}"'
+                f' stroke="{LC}" stroke-width="1.5" stroke-linecap="round"/>')
+
+    def elbow_L(xs, ys_src, xd, ys_dst):
+        mid = (xs + CW + xd) / 2
+        out = []
+        for k in range(0, len(ys_src), 2):
+            ya, yb, yt = ys_src[k], ys_src[k + 1], ys_dst[k // 2]
+            out += [ln(xs + CW, ya, mid, ya), ln(xs + CW, yb, mid, yb),
+                    ln(mid, ya, mid, yb), ln(mid, yt, xd, yt)]
+        return "".join(out)
+
+    def elbow_R(xs, ys_src, xd, ys_dst):
+        mid = (xd + CW + xs) / 2
+        out = []
+        for k in range(0, len(ys_src), 2):
+            ya, yb, yt = ys_src[k], ys_src[k + 1], ys_dst[k // 2]
+            out += [ln(xs, ya, mid, ya), ln(xs, yb, mid, yb),
+                    ln(mid, ya, mid, yb), ln(xd + CW, yt, mid, yt)]
+        return "".join(out)
+
+    def card(x, yc, m_num):
+        m = bracket.get(m_num, {})
+        t1, t2 = m.get("team1", "TBD"), m.get("team2", "TBD")
+        winner, prob, actual = m.get("winner"), m.get("win_prob"), m.get("actual", False)
+        y = yc - CH / 2
+        t1c, t2c = t1.rstrip("*"), t2.rstrip("*")
+        w1 = bool(winner and winner == t1c and flags.get(t1c))
+        w2 = bool(winner and winner == t2c and flags.get(t2c))
+
+        def row(t, ry, is_win):
+            clean = t.rstrip("*")
+            code  = flags.get(clean, "")
+            bg = "#15803d" if is_win else "#1e293b"
+            tc = "#ffffff" if is_win else ("#94a3b8" if code else "#475569")
+            parts = []
+            if is_win:
+                parts.append(f'<rect x="{x:.1f}" y="{ry:.1f}" width="{CW}" height="{RH}" fill="{bg}"/>')
+            if code:
+                parts.append(f'<image href="https://flagcdn.com/w20/{code}.png"'
+                             f' x="{x+4:.1f}" y="{ry+4:.1f}" width="18" height="12"/>')
+                tx = x + 26
+            else:
+                tx = x + 6
+            name = clean[:17] + "…" if len(clean) > 17 else clean
+            if is_win and prob is not None and not actual:
+                name += f" {prob:.0%}"
+            elif is_win and actual:
+                name += " ✓"
+            ty, fw = ry + RH - 6, ' font-weight="bold"' if is_win else ""
+            italic = ' font-style="italic"' if not code and not is_win else ""
+            parts.append(f'<text x="{tx:.1f}" y="{ty:.1f}" fill="{tc}" font-size="11"'
+                         f' font-family="Arial,sans-serif"{fw}{italic}>{html.escape(name)}</text>')
+            return "".join(parts)
+
+        sep_y = y + RH
+        return (f'<rect x="{x:.1f}" y="{y:.1f}" width="{CW}" height="{CH}"'
+                f' rx="4" fill="#1e293b" stroke="#334155" stroke-width="1"/>'
+                + row(t1, y, w1)
+                + f'<line x1="{x:.1f}" y1="{sep_y:.1f}" x2="{x+CW:.1f}" y2="{sep_y:.1f}"'
+                  f' stroke="#334155" stroke-width="1"/>'
+                + row(t2, y + RH + SEP, w2))
+
+    elems = [
+        elbow_L(xL[0], r32_yc, xL[1], r16_yc),
+        elbow_L(xL[1], r16_yc, xL[2], qf_yc),
+        elbow_L(xL[2], qf_yc,  xL[3], [sf_yc]),
+        ln(xL[3] + CW, sf_yc, x_fin, sf_yc),
+        elbow_R(xR[3], r32_yc, xR[2], r16_yc),
+        elbow_R(xR[2], r16_yc, xR[1], qf_yc),
+        elbow_R(xR[1], qf_yc,  xR[0], [sf_yc]),
+        ln(xR[0], sf_yc, x_fin + CW, sf_yc),
+    ]
+    for i, mn in enumerate(r32L): elems.append(card(xL[0], r32_yc[i], mn))
+    for i, mn in enumerate(r16L): elems.append(card(xL[1], r16_yc[i], mn))
+    for i, mn in enumerate(qfL):  elems.append(card(xL[2], qf_yc[i],  mn))
+    elems.append(card(xL[3], sf_yc, sfL))
+    elems.append(card(x_fin,  sf_yc, fin))
+    elems.append(card(xR[0],  sf_yc, sfR))
+    for i, mn in enumerate(qfR):  elems.append(card(xR[1], qf_yc[i],  mn))
+    for i, mn in enumerate(r16R): elems.append(card(xR[2], r16_yc[i], mn))
+    for i, mn in enumerate(r32R): elems.append(card(xR[3], r32_yc[i], mn))
+
+    ly = canvas_h - 4
+    for lx, label in [
+        (xL[0]+CW/2, "R32"), (xL[1]+CW/2, "R16"), (xL[2]+CW/2, "QF"),
+        (xL[3]+CW/2, "SF"), (x_fin+CW/2, "Final"),
+        (xR[0]+CW/2, "SF"), (xR[1]+CW/2, "QF"), (xR[2]+CW/2, "R16"), (xR[3]+CW/2, "R32"),
+    ]:
+        elems.append(f'<text x="{lx:.1f}" y="{ly}" text-anchor="middle"'
+                     f' fill="#6b7280" font-size="10" font-family="Arial,sans-serif">{label}</text>')
+
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{canvas_w:.0f}" height="{canvas_h:.0f}">'
+           f'<rect width="100%" height="100%" fill="#0f172a"/>'
+           + "".join(elems) + '</svg>')
+
     st.markdown(f"### {title}")
-    for stage, order in _BRACKET_ORDER.items():
-        matches = [bracket[m] for m in order if m in bracket]
-        if not matches:
-            continue
-        st.markdown(f"**{_STAGE_LABEL[stage]}**")
-        cols = st.columns(_STAGE_COLS[stage])
-        for i, m in enumerate(matches):
-            with cols[i % _STAGE_COLS[stage]]:
-                st.markdown(
-                    _match_card_html(m["team1"], m["team2"], m.get("winner"),
-                                     m.get("win_prob"), flags, m.get("actual", False)),
-                    unsafe_allow_html=True,
-                )
-    # Champion banner
-    final = bracket.get(104)
-    if final and final.get("winner") and flags.get(final["winner"]):
-        w, code = final["winner"], flags[final["winner"]]
-        prob_str = (f" ({final['win_prob']:.0%})" if final.get("win_prob") else
-                    " ✓" if final.get("actual") else "")
+    components.html(
+        f'<div style="overflow-x:auto;background:#0f172a;border-radius:12px;padding:12px 8px;">{svg}</div>',
+        height=canvas_h + 40,
+    )
+
+    final_m = bracket.get(104)
+    if final_m and final_m.get("winner") and flags.get(final_m["winner"]):
+        w, code = final_m["winner"], flags[final_m["winner"]]
+        prob_str = (f" ({final_m['win_prob']:.0%})" if final_m.get("win_prob") and not final_m.get("actual")
+                    else " ✓" if final_m.get("actual") else "")
         st.markdown(
-            f'<div style="text-align:center;margin:14px 0;padding:14px;'
-            f'background:#16a34a;border-radius:12px;">'
+            f'<div style="text-align:center;margin:10px 0;padding:12px;'
+            f'background:#15803d;border-radius:10px;">'
             f'<img src="https://flagcdn.com/w40/{code}.png" alt="{html.escape(w)}"'
-            f' width="36" style="vertical-align:middle;margin-right:10px;">'
-            f'<span style="font-size:1.25rem;font-weight:800;color:#fff;">'
+            f' width="34" style="vertical-align:middle;margin-right:10px;">'
+            f'<span style="font-size:1.2rem;font-weight:800;color:#fff;">'
             f'🏆 Champion: {html.escape(w)}{prob_str}</span></div>',
             unsafe_allow_html=True,
         )
