@@ -356,6 +356,7 @@ predictor = get_predictor(st.session_state.refresh_token, squad_strength)
 # ── Pull finished matches from API and merge into CSV results (5-min TTL) ───
 api_key = get_api_key()
 af_key = get_apifootball_key()
+group_results_csv, ko_results_csv = group_results, ko_results  # pre-merge originals for fragment use
 if api_key:
     _now = time.time()
     if _now - st.session_state.get("finished_fetch_time", 0) > FINISHED_REFRESH_SECS:
@@ -535,9 +536,18 @@ with tab_sim:
                               margin=dict(l=0, r=0, t=40, b=0))
             st.plotly_chart(fig, width="stretch")
 
-        st.markdown("#### Probability of reaching each stage")
+        _tbl_hdr, _tbl_dl = st.columns([4, 1])
+        _tbl_hdr.markdown("#### Probability of reaching each stage")
         pct_cols = [c for c in summary.columns if c != "team"]
         table = summary.copy()
+        _csv_bytes = table[["team"] + pct_cols].to_csv(index=False).encode()
+        _tbl_dl.download_button("⬇️ CSV", data=_csv_bytes,
+                                file_name="wc2026_odds.csv", mime="text/csv",
+                                help="Download full odds table as CSV")
+        _search = st.text_input("🔍 Filter teams", placeholder="e.g. Brazil",
+                                key="sim_team_filter", label_visibility="collapsed")
+        if _search:
+            table = table[table["team"].str.contains(_search, case=False, na=False)]
         table.insert(0, "flag", table["team"].map(flag_url))
         st.dataframe(table.style.format({c: "{:.1%}" for c in pct_cols})
                      .background_gradient(subset=pct_cols, cmap="Greens", vmin=0, vmax=1),
@@ -760,8 +770,28 @@ with tab_live_game:
 
 # ─────────────────────────────────────────── Live Tracker tab ───────────────
 with tab_live:
-    _tracker_hdr, _tracker_btn = st.columns([5, 1])
-    with _tracker_hdr:
+    # ── Header controls ──────────────────────────────────────────────────
+    _th1, _th2, _th3 = st.columns([3, 2, 1])
+    with _th2:
+        _auto_refresh = st.toggle(
+            "Auto-refresh", value=bool(api_key), key="tracker_auto",
+            help=f"Re-fetch standings and bracket every {FINISHED_REFRESH_SECS // 60} min automatically.")
+    with _th3:
+        if st.button("🔄 Sync now", key="tracker_sync"):
+            if api_key:
+                st.session_state.finished_matches_api = fetch_finished_matches(api_key)
+                st.session_state.finished_fetch_time = time.time()
+            st.rerun()
+
+    # ── Live data (auto-refreshes when toggle is on) ─────────────────────
+    @st.fragment(run_every=FINISHED_REFRESH_SECS if _auto_refresh else None)
+    def _tracker_data():
+        if api_key:
+            _now = time.time()
+            if _now - st.session_state.get("finished_fetch_time", 0) > FINISHED_REFRESH_SECS:
+                st.session_state.finished_matches_api = fetch_finished_matches(api_key)
+                st.session_state.finished_fetch_time = _now
+
         if api_key and st.session_state.get("finished_fetch_time"):
             _secs = int(time.time() - st.session_state.finished_fetch_time)
             if _secs < 30:
@@ -773,57 +803,57 @@ with tab_live:
             else:
                 _age_txt, _age_col = f"{_secs // 60}m ago", "#6b7280"
             st.markdown(
-                f'Auto-syncs every {FINISHED_REFRESH_SECS // 60} min · '
-                f'<span style="color:{_age_col};font-weight:600;">updated {_age_txt}</span>',
+                f'<small>Auto-syncs every {FINISHED_REFRESH_SECS // 60} min · '
+                f'<span style="color:{_age_col};font-weight:600;">updated {_age_txt}</span></small>',
                 unsafe_allow_html=True,
             )
         else:
             st.caption("No API key — showing CSV data only. Add your key to enable real-time sync.")
-    with _tracker_btn:
-        if st.button("🔄 Sync now", key="tracker_sync"):
-            if api_key:
-                st.session_state.finished_matches_api = fetch_finished_matches(api_key)
-                st.session_state.finished_fetch_time = time.time()
-            st.rerun()
-    st.markdown(f"#### Played 2026 World Cup matches ({len(group_results) + len(ko_results)})")
-    all_played = group_results + st.session_state.manual_results
-    if not all_played and not ko_results:
-        st.info("No 2026 World Cup results in the dataset yet — hit refresh in the sidebar.")
-    else:
-        played_df = pd.DataFrame(all_played, columns=["team1", "team2", "score1", "score2"])
-        played_df["group"] = played_df["team1"].map(GROUP_OF)
-        played_df["flag1"] = played_df["team1"].map(flag_url)
-        played_df["flag2"] = played_df["team2"].map(flag_url)
-        st.dataframe(played_df[["group", "flag1", "team1", "score1", "score2", "team2", "flag2"]],
-                     width="stretch", hide_index=True,
-                     column_config={"flag1": FLAG_COL, "flag2": FLAG_COL})
 
-        st.markdown("#### Current group standings")
-        groups_started = sorted({GROUP_OF[t1] for t1, *_ in all_played})
-        cols = st.columns(min(3, max(1, len(groups_started))))
-        for i, letter in enumerate(groups_started):
-            teams = config["groups"][letter]
-            ms = [m for m in all_played if GROUP_OF[m[0]] == letter]
-            order = standings(teams, ms)
-            stats_tbl = {t: [0, 0, 0, 0] for t in teams}
-            for t1, t2, s1, s2 in ms:
-                for t, gf_, ga_ in ((t1, s1, s2), (t2, s2, s1)):
-                    stats_tbl[t][0] += 1
-                    stats_tbl[t][1] += 3 if gf_ > ga_ else (1 if gf_ == ga_ else 0)
-                    stats_tbl[t][2] += gf_ - ga_
-                    stats_tbl[t][3] += gf_
-            tbl = pd.DataFrame([[flag_url(t), t, *stats_tbl[t]] for t in order],
-                               columns=["flag", "team", "P", "Pts", "GD", "GF"])
-            with cols[i % len(cols)]:
-                st.markdown(f"**Group {letter}**")
-                st.dataframe(tbl, width="stretch", hide_index=True,
-                             column_config={"flag": FLAG_COL})
-
-        st.divider()
-        live_bracket = _build_live_bracket(
-            group_results + st.session_state.manual_results, ko_results
+        _gr, _ko = _merge_api_finished(
+            group_results_csv, ko_results_csv,
+            st.session_state.get("finished_matches_api", []),
+            config,
         )
-        _show_bracket(live_bracket, FLAGS, "🏟️ Live Bracket")
+        all_played = _gr + st.session_state.manual_results
+
+        st.markdown(f"#### Played 2026 World Cup matches ({len(_gr) + len(_ko)})")
+        if not all_played and not _ko:
+            st.info("No 2026 World Cup results in the dataset yet — hit refresh in the sidebar.")
+        else:
+            played_df = pd.DataFrame(all_played, columns=["team1", "team2", "score1", "score2"])
+            played_df["group"] = played_df["team1"].map(GROUP_OF)
+            played_df["flag1"] = played_df["team1"].map(flag_url)
+            played_df["flag2"] = played_df["team2"].map(flag_url)
+            st.dataframe(played_df[["group", "flag1", "team1", "score1", "score2", "team2", "flag2"]],
+                         width="stretch", hide_index=True,
+                         column_config={"flag1": FLAG_COL, "flag2": FLAG_COL})
+
+            st.markdown("#### Current group standings")
+            groups_started = sorted({GROUP_OF[t1] for t1, *_ in all_played})
+            cols = st.columns(min(3, max(1, len(groups_started))))
+            for i, letter in enumerate(groups_started):
+                teams = config["groups"][letter]
+                ms = [m for m in all_played if GROUP_OF[m[0]] == letter]
+                order = standings(teams, ms)
+                stats_tbl = {t: [0, 0, 0, 0] for t in teams}
+                for t1, t2, s1, s2 in ms:
+                    for t, gf_, ga_ in ((t1, s1, s2), (t2, s2, s1)):
+                        stats_tbl[t][0] += 1
+                        stats_tbl[t][1] += 3 if gf_ > ga_ else (1 if gf_ == ga_ else 0)
+                        stats_tbl[t][2] += gf_ - ga_
+                        stats_tbl[t][3] += gf_
+                tbl = pd.DataFrame([[flag_url(t), t, *stats_tbl[t]] for t in order],
+                                   columns=["flag", "team", "P", "Pts", "GD", "GF"])
+                with cols[i % len(cols)]:
+                    st.markdown(f"**Group {letter}**")
+                    st.dataframe(tbl, width="stretch", hide_index=True,
+                                 column_config={"flag": FLAG_COL})
+
+            st.divider()
+            _show_bracket(_build_live_bracket(all_played, _ko), FLAGS, "🏟️ Live Bracket")
+
+    _tracker_data()
 
     # ── Manual result entry ──────────────────────────────────────────────
     st.markdown("#### Enter a result manually")
