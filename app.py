@@ -504,6 +504,11 @@ with tab_sim:
                              help="Played matches (plus manual entries) are fixed; "
                                   "only the remaining tournament is simulated.")
         run = st.button("▶ Run simulation", type="primary", width="stretch")
+        if st.session_state.manual_results:
+            if st.button("🗑️ Clear manual results & re-run", width="stretch",
+                         help="Remove all manually-entered results and immediately re-run the simulation."):
+                st.session_state.manual_results = []
+                run = True
 
     if run:
         sim = get_simulator(st.session_state.refresh_token, n_sims, squad_strength)
@@ -759,7 +764,19 @@ with tab_live:
     with _tracker_hdr:
         if api_key and st.session_state.get("finished_fetch_time"):
             _secs = int(time.time() - st.session_state.finished_fetch_time)
-            st.caption(f"Auto-syncs from API every {FINISHED_REFRESH_SECS // 60} min · last updated {_secs}s ago")
+            if _secs < 30:
+                _age_txt, _age_col = "just now", "#16a34a"
+            elif _secs < 120:
+                _age_txt, _age_col = f"{_secs}s ago", "#16a34a"
+            elif _secs < 300:
+                _age_txt, _age_col = f"{_secs // 60}m ago", "#ca8a04"
+            else:
+                _age_txt, _age_col = f"{_secs // 60}m ago", "#6b7280"
+            st.markdown(
+                f'Auto-syncs every {FINISHED_REFRESH_SECS // 60} min · '
+                f'<span style="color:{_age_col};font-weight:600;">updated {_age_txt}</span>',
+                unsafe_allow_html=True,
+            )
         else:
             st.caption("No API key — showing CSV data only. Add your key to enable real-time sync.")
     with _tracker_btn:
