@@ -322,6 +322,36 @@ def _build_live_bracket(group_results_all: list, ko_results_all: list) -> dict:
     return bracket
 
 
+def _group_qual_status(teams: list, matches: list) -> dict[str, str]:
+    """Return 'through' | 'contention' | 'eliminated' for each team in a group.
+
+    Uses max-possible-points logic: a team is eliminated if 2+ opponents already
+    have more points than the team could ever reach; through if fewer than 2
+    opponents could possibly surpass the team's current points.
+    """
+    pts = {t: 0 for t in teams}
+    played = {t: 0 for t in teams}
+    for t1, t2, s1, s2 in matches:
+        for t, gf, ga in ((t1, s1, s2), (t2, s2, s1)):
+            if t in pts:
+                played[t] += 1
+                pts[t] += 3 if gf > ga else (1 if gf == ga else 0)
+    if not any(v > 0 for v in played.values()):
+        return {t: "contention" for t in teams}
+    max_pts = {t: pts[t] + 3 * (3 - played[t]) for t in teams}
+    status = {}
+    for t in teams:
+        guaranteed_above = sum(1 for o in teams if o != t and pts[o] > max_pts[t])
+        possibly_above   = sum(1 for o in teams if o != t and max_pts[o] > pts[t])
+        if guaranteed_above >= 2:
+            status[t] = "eliminated"
+        elif possibly_above < 2:
+            status[t] = "through"
+        else:
+            status[t] = "contention"
+    return status
+
+
 # ── Sidebar ─────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("⚽ WC 2026 Predictor")
@@ -518,6 +548,12 @@ with tab_sim:
         with st.spinner(f"Simulating the tournament {n_sims:,} times..."):
             st.session_state.sim_out = sim.run(locked_group=locked, ko_winners=kos)
             st.session_state.sim_locked = len(locked)
+            _snap = {row["team"]: row["P(Champion)"]
+                     for _, row in st.session_state.sim_out["summary"].iterrows()}
+            _hist = st.session_state.setdefault("odds_history", [])
+            _hist.append({"run": len(_hist) + 1, "locked": len(locked), "odds": _snap})
+            if len(_hist) > 20:
+                _hist.pop(0)
 
     out = st.session_state.get("sim_out")
     if out is None:
@@ -553,6 +589,32 @@ with tab_sim:
                      .background_gradient(subset=pct_cols, cmap="Greens", vmin=0, vmax=1),
                      width="stretch", height=420, hide_index=True,
                      column_config={"flag": FLAG_COL})
+
+        with st.expander("📈 Championship odds trend across runs"):
+            _odds_hist = st.session_state.get("odds_history", [])
+            if len(_odds_hist) < 2:
+                st.caption("Run the simulation at least twice (e.g. before and after results lock in) to see how odds shift.")
+            else:
+                _n_top = st.slider("Teams to track", 3, 12, 8, key="trend_top_n")
+                _top_teams = out["summary"].head(_n_top)["team"].tolist()
+                _trend_rows = [
+                    {"Run": f"Run {s['run']} ({s['locked']} results)",
+                     "Team": team, "P(Champion)": s["odds"].get(team, 0.0)}
+                    for s in _odds_hist for team in _top_teams
+                    if team in s["odds"]
+                ]
+                _trend_df = pd.DataFrame(_trend_rows)
+                _trend_fig = px.line(_trend_df, x="Run", y="P(Champion)", color="Team",
+                                     markers=True,
+                                     color_discrete_sequence=px.colors.qualitative.Set2)
+                _trend_fig.update_layout(
+                    yaxis_tickformat=".0%", yaxis_title="P(Champion)",
+                    height=380, margin=dict(l=0, r=0, t=10, b=0),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.01))
+                st.plotly_chart(_trend_fig, width="stretch")
+                if st.button("🗑️ Clear trend history", key="clear_trend"):
+                    st.session_state.odds_history = []
+                    st.rerun()
 
         st.markdown("#### Group finishing positions")
         g = st.selectbox("Group", list(config["groups"]))
@@ -836,6 +898,8 @@ with tab_live:
                 teams = config["groups"][letter]
                 ms = [m for m in all_played if GROUP_OF[m[0]] == letter]
                 order = standings(teams, ms)
+                qual = _group_qual_status(teams, ms)
+                _STATUS_ICON = {"through": "✅", "eliminated": "❌", "contention": ""}
                 stats_tbl = {t: [0, 0, 0, 0] for t in teams}
                 for t1, t2, s1, s2 in ms:
                     for t, gf_, ga_ in ((t1, s1, s2), (t2, s2, s1)):
@@ -843,12 +907,49 @@ with tab_live:
                         stats_tbl[t][1] += 3 if gf_ > ga_ else (1 if gf_ == ga_ else 0)
                         stats_tbl[t][2] += gf_ - ga_
                         stats_tbl[t][3] += gf_
-                tbl = pd.DataFrame([[flag_url(t), t, *stats_tbl[t]] for t in order],
-                                   columns=["flag", "team", "P", "Pts", "GD", "GF"])
+                tbl = pd.DataFrame(
+                    [[flag_url(t), t, *stats_tbl[t], _STATUS_ICON[qual.get(t, "contention")]]
+                     for t in order],
+                    columns=["flag", "team", "P", "Pts", "GD", "GF", "Q"])
                 with cols[i % len(cols)]:
                     st.markdown(f"**Group {letter}**")
                     st.dataframe(tbl, width="stretch", hide_index=True,
-                                 column_config={"flag": FLAG_COL})
+                                 column_config={"flag": FLAG_COL, "Q": st.column_config.TextColumn("", width=24)})
+
+            # ── Upcoming matches ──────────────────────────────────────────
+            if api_key:
+                _now = time.time()
+                if _now - st.session_state.get("upcoming_fetch_time", 0) > FINISHED_REFRESH_SECS:
+                    st.session_state.upcoming_matches = fetch_todays_matches(api_key)
+                    st.session_state.upcoming_fetch_time = _now
+                upcoming = st.session_state.get("upcoming_matches", [])
+                if upcoming:
+                    st.markdown("#### Today's upcoming matches")
+                    for _um in upcoming:
+                        _uh, _ua = _um["home"], _um["away"]
+                        _utc = _um["utc_date"][:16].replace("T", " ") + " UTC" if _um["utc_date"] else ""
+                        with st.container(border=True):
+                            _mc1, _mc2 = st.columns([2, 1])
+                            with _mc1:
+                                st.markdown(
+                                    f'<div style="display:flex;align-items:center;gap:10px;">'
+                                    f'<img src="{flag_url(_uh,40)}" alt="{html.escape(_uh)}" width="28" style="border-radius:3px;">'
+                                    f'<b>{html.escape(_uh)}</b> vs <b>{html.escape(_ua)}</b>'
+                                    f'<img src="{flag_url(_ua,40)}" alt="{html.escape(_ua)}" width="28" style="border-radius:3px;">'
+                                    f'<span style="color:#6b7280;font-size:0.85rem"> · {html.escape(_utc)}</span>'
+                                    f'</div>', unsafe_allow_html=True)
+                            with _mc2:
+                                try:
+                                    _upm = predictor.predict(_uh, _ua, neutral=True,
+                                                             injuries=st.session_state.injuries)
+                                    st.markdown(
+                                        f'<div style="text-align:right;font-size:0.85rem;">'
+                                        f'<span style="color:#2563eb;font-weight:600">{_upm["p_home"]:.0%}</span>'
+                                        f' · <span style="color:#9ca3af">{_upm["p_draw"]:.0%}</span>'
+                                        f' · <span style="color:#dc2626;font-weight:600">{_upm["p_away"]:.0%}</span>'
+                                        f'</div>', unsafe_allow_html=True)
+                                except Exception:
+                                    pass
 
             st.divider()
             _show_bracket(_build_live_bracket(all_played, _ko), FLAGS, "🏟️ Live Bracket")
