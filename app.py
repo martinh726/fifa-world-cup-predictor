@@ -14,7 +14,8 @@ import streamlit.components.v1 as components
 
 from src.data_loader import download_data, load_results, load_shootouts, load_wc2026
 from src.livefeed import (fetch_apifootball_live, fetch_finished_matches, fetch_live_matches,
-                          fetch_todays_matches, get_api_key, get_apifootball_key)
+                          fetch_scheduled_matches, fetch_todays_matches,
+                          get_api_key, get_apifootball_key)
 from src.predict import MatchPredictor, ingame_probs
 from src.simulate import TournamentSimulator
 from src.tournament import split_real_results, standings
@@ -203,9 +204,12 @@ def _show_bracket(bracket: dict, flags: dict, title: str = "🏟️ Bracket") ->
             return "".join(parts)
 
         sep_y = y + RH
+        upset = prob is not None and not actual and 0 < prob < 0.60
+        badge = (f'<text x="{x+CW-3:.1f}" y="{y+11:.1f}" text-anchor="end" '
+                 f'font-size="9" fill="#f59e0b">⚡</text>') if upset else ""
         return (f'<rect x="{x:.1f}" y="{y:.1f}" width="{CW}" height="{CH}"'
                 f' rx="4" fill="#1e293b" stroke="#334155" stroke-width="1"/>'
-                + row(t1, y, w1)
+                + row(t1, y, w1) + badge
                 + f'<line x1="{x:.1f}" y1="{sep_y:.1f}" x2="{x+CW:.1f}" y2="{sep_y:.1f}"'
                   f' stroke="#334155" stroke-width="1"/>'
                 + row(t2, y + RH + SEP, w2))
@@ -397,8 +401,8 @@ if api_key:
         st.session_state.get("finished_matches_api", []),
         config,
     )
-tab_match, tab_sim, tab_live_game, tab_live = st.tabs(
-    ["🎯 Match Predictor", "🏆 Tournament Simulator", "🔴 Live", "📡 Live Tracker"])
+tab_match, tab_sim, tab_live_game, tab_live, tab_focus = st.tabs(
+    ["🎯 Match Predictor", "🏆 Tournament Simulator", "🔴 Live", "📡 Live Tracker", "⭐ Team Focus"])
 
 # ─────────────────────────────────────────── Match Predictor tab ────────────
 with tab_match:
@@ -526,6 +530,40 @@ with tab_match:
             st.markdown("**Elo ratings**")
             st.markdown(f"{home}: **{pred['elo_home']:.0f}** · {away}: **{pred['elo_away']:.0f}**")
 
+        with st.expander("📊 Head-to-head history"):
+            _h2h = results[
+                ((results["home_team"] == home) & (results["away_team"] == away)) |
+                ((results["home_team"] == away) & (results["away_team"] == home))
+            ].sort_values("date", ascending=False)
+            if _h2h.empty:
+                st.caption("No historical meetings found in the dataset.")
+            else:
+                _h_wins = (
+                    (((_h2h["home_team"] == home) & (_h2h["home_score"] > _h2h["away_score"])) |
+                     ((_h2h["away_team"] == home) & (_h2h["away_score"] > _h2h["home_score"])))
+                )
+                _draws = _h2h["home_score"] == _h2h["away_score"]
+                _total = len(_h2h)
+                _w, _d, _l = int(_h_wins.sum()), int(_draws.sum()), int((~_h_wins & ~_draws).sum())
+                _hc1, _hc2, _hc3, _hc4 = st.columns(4)
+                _hc1.metric("Meetings", _total)
+                _hc2.metric(f"{home} wins", f"{_w} ({_w/_total:.0%})")
+                _hc3.metric("Draws", f"{_d} ({_d/_total:.0%})")
+                _hc4.metric(f"{away} wins", f"{_l} ({_l/_total:.0%})")
+                st.markdown("**Last 5 meetings**")
+                for _, _r in _h2h.head(5).iterrows():
+                    _ht, _at = _r["home_team"], _r["away_team"]
+                    _hs, _as = int(_r["home_score"]), int(_r["away_score"])
+                    _dt = str(_r["date"])[:10]
+                    _tourn = _r.get("tournament", "")
+                    if _hs > _as:
+                        _rs = f"**{html.escape(_ht)}** {_hs}–{_as} {html.escape(_at)}"
+                    elif _as > _hs:
+                        _rs = f"{html.escape(_ht)} {_hs}–{_as} **{html.escape(_at)}**"
+                    else:
+                        _rs = f"{html.escape(_ht)} {_hs}–{_as} {html.escape(_at)}"
+                    st.markdown(f"`{_dt}` · {_rs} · *{html.escape(str(_tourn))}*")
+
 # ─────────────────────────────────────────── Tournament Simulator tab ────────
 with tab_sim:
     left, right = st.columns([1, 3])
@@ -627,6 +665,59 @@ with tab_sim:
 
         st.divider()
         _show_bracket(out["bracket"], FLAGS, "🏟️ Simulated Bracket (most likely path)")
+
+        with st.expander("🎯 Prediction accuracy on completed matches"):
+            _all_played_acc = group_results + st.session_state.manual_results
+            if not _all_played_acc and not ko_results:
+                st.caption("No completed matches yet — accuracy will appear here once results are in.")
+            else:
+                _acc_key = (st.session_state.refresh_token, len(_all_played_acc), len(ko_results))
+                if st.session_state.get("_acc_cache_key") != _acc_key:
+                    _rows, _correct, _total, _brier = [], 0, 0, 0.0
+                    for _t1, _t2, _s1, _s2 in _all_played_acc:
+                        try:
+                            _p = predictor.predict(_t1, _t2, neutral=True, injuries={})
+                            _act = "H" if _s1 > _s2 else ("D" if _s1 == _s2 else "A")
+                            _pred_out = max(("H", _p["p_home"]), ("D", _p["p_draw"]),
+                                           ("A", _p["p_away"]), key=lambda x: x[1])[0]
+                            _ih, _id, _ia = (1,0,0) if _act=="H" else ((0,1,0) if _act=="D" else (0,0,1))
+                            _brier += (_p["p_home"]-_ih)**2 + (_p["p_draw"]-_id)**2 + (_p["p_away"]-_ia)**2
+                            _total += 1
+                            _correct += _act == _pred_out
+                            _rows.append({"Match": f"{_t1} vs {_t2}", "Score": f"{_s1}–{_s2}",
+                                          "Predicted": _pred_out, "Actual": _act,
+                                          "✓": "✅" if _act == _pred_out else "❌",
+                                          "pH": _p["p_home"], "pD": _p["p_draw"], "pA": _p["p_away"]})
+                        except Exception:
+                            pass
+                    for _t1, _t2, _winner in ko_results:
+                        try:
+                            _p = predictor.predict(_t1, _t2, neutral=True, injuries={})
+                            _pred_w = _t1 if _p["p_home"] >= _p["p_away"] else _t2
+                            _total += 1; _correct += _winner == _pred_w
+                            _brier += (_p["p_home"] + _p["p_draw"]*0.5 - (1 if _winner==_t1 else 0))**2
+                            _rows.append({"Match": f"{_t1} vs {_t2}", "Score": "KO",
+                                          "Predicted": "H" if _pred_w==_t1 else "A",
+                                          "Actual": "H" if _winner==_t1 else "A",
+                                          "✓": "✅" if _winner==_pred_w else "❌",
+                                          "pH": _p["p_home"], "pD": _p["p_draw"], "pA": _p["p_away"]})
+                        except Exception:
+                            pass
+                    st.session_state["_acc_cache_key"] = _acc_key
+                    st.session_state["_acc_data"] = {"rows": _rows, "correct": _correct,
+                                                     "total": _total, "brier": _brier}
+                _ad = st.session_state.get("_acc_data", {})
+                if _ad.get("total", 0) > 0:
+                    _ac1, _ac2, _ac3 = st.columns(3)
+                    _ac1.metric("Correct outcomes", f"{_ad['correct']} / {_ad['total']}")
+                    _ac2.metric("Accuracy", f"{_ad['correct']/_ad['total']:.0%}")
+                    _ac3.metric("Brier score", f"{_ad['brier']/_ad['total']:.3f}",
+                                help="Lower is better. Perfect = 0, random = 0.667")
+                    _acc_df = pd.DataFrame(_ad["rows"])
+                    st.dataframe(
+                        _acc_df.style.format({"pH": "{:.0%}", "pD": "{:.0%}", "pA": "{:.0%}"}),
+                        column_config={"pH": "P(home)", "pD": "P(draw)", "pA": "P(away)"},
+                        hide_index=True, width="stretch")
 
 # ─────────────────────────────────────────── Live tab ───────────────────────
 with tab_live_game:
@@ -916,6 +1007,75 @@ with tab_live:
                     st.dataframe(tbl, width="stretch", hide_index=True,
                                  column_config={"flag": FLAG_COL, "Q": st.column_config.TextColumn("", width=24)})
 
+            # ── Goal statistics ───────────────────────────────────────────
+            with st.expander("⚽ Tournament goal statistics"):
+                _tg_scored: dict[str, int] = {}
+                _tg_conceded: dict[str, int] = {}
+                _total_goals = 0
+                for _t1, _t2, _s1, _s2 in all_played:
+                    _tg_scored[_t1]   = _tg_scored.get(_t1, 0)   + _s1
+                    _tg_scored[_t2]   = _tg_scored.get(_t2, 0)   + _s2
+                    _tg_conceded[_t1] = _tg_conceded.get(_t1, 0) + _s2
+                    _tg_conceded[_t2] = _tg_conceded.get(_t2, 0) + _s1
+                    _total_goals += _s1 + _s2
+                _games = len(all_played)
+                _gc1, _gc2, _gc3 = st.columns(3)
+                _gc1.metric("Total goals", _total_goals)
+                _gc2.metric("Goals / game", f"{_total_goals / max(_games, 1):.2f}")
+                _gc3.metric("Matches played", _games)
+                if _tg_scored:
+                    _gc4, _gc5 = st.columns(2)
+                    with _gc4:
+                        st.markdown("**Top scoring teams**")
+                        for _t, _g in sorted(_tg_scored.items(), key=lambda x: -x[1])[:6]:
+                            _fc = FLAGS.get(_t, "")
+                            _fi = f'<img src="https://flagcdn.com/w20/{_fc}.png" width="14" style="vertical-align:middle;margin-right:4px;">' if _fc else ""
+                            st.markdown(f'{_fi}{html.escape(_t)} — **{_g}**', unsafe_allow_html=True)
+                    with _gc5:
+                        st.markdown("**Best defences (fewest conceded)**")
+                        for _t, _g in sorted(_tg_conceded.items(), key=lambda x: x[1])[:6]:
+                            _fc = FLAGS.get(_t, "")
+                            _fi = f'<img src="https://flagcdn.com/w20/{_fc}.png" width="14" style="vertical-align:middle;margin-right:4px;">' if _fc else ""
+                            st.markdown(f'{_fi}{html.escape(_t)} — **{_g}** against', unsafe_allow_html=True)
+
+            # ── Full schedule ─────────────────────────────────────────────
+            if api_key:
+                with st.expander("📅 Full match schedule"):
+                    _sched_key = "sched_matches"
+                    _sched_time_key = "sched_fetch_time"
+                    _now_s = time.time()
+                    if _now_s - st.session_state.get(_sched_time_key, 0) > FINISHED_REFRESH_SECS * 2:
+                        st.session_state[_sched_key] = fetch_scheduled_matches(api_key)
+                        st.session_state[_sched_time_key] = _now_s
+                    _sched = st.session_state.get(_sched_key, [])
+                    if not _sched:
+                        st.caption("No upcoming matches found.")
+                    else:
+                        for _sm in _sched:
+                            _sh, _sa = _sm["home"], _sm["away"]
+                            _sutc = _sm["utc_date"][:16].replace("T", " ") + " UTC" if _sm["utc_date"] else ""
+                            _sday = _sm["utc_date"][:10] if _sm["utc_date"] else ""
+                            _sc1, _sc2 = st.columns([2, 1])
+                            with _sc1:
+                                _shc = FLAGS.get(_sh, ""); _sac = FLAGS.get(_sa, "")
+                                _shf = f'<img src="https://flagcdn.com/w20/{_shc}.png" width="16" style="vertical-align:middle;margin-right:4px;">' if _shc else ""
+                                _saf = f'<img src="https://flagcdn.com/w20/{_sac}.png" width="16" style="vertical-align:middle;margin-right:4px;">' if _sac else ""
+                                st.markdown(
+                                    f'{_shf}<b>{html.escape(_sh)}</b> vs {_saf}<b>{html.escape(_sa)}</b>'
+                                    f' <span style="color:#6b7280;font-size:0.82rem">· {html.escape(_sutc)}</span>',
+                                    unsafe_allow_html=True)
+                            with _sc2:
+                                try:
+                                    _spm = predictor.predict(_sh, _sa, neutral=True,
+                                                             injuries=st.session_state.injuries)
+                                    st.markdown(
+                                        f'<span style="color:#2563eb;font-weight:600">{_spm["p_home"]:.0%}</span>'
+                                        f' · <span style="color:#9ca3af">{_spm["p_draw"]:.0%}</span>'
+                                        f' · <span style="color:#dc2626;font-weight:600">{_spm["p_away"]:.0%}</span>',
+                                        unsafe_allow_html=True)
+                                except Exception:
+                                    pass
+
             # ── Upcoming matches ──────────────────────────────────────────
             if api_key:
                 _now = time.time()
@@ -1017,3 +1177,160 @@ with tab_live:
         if st.button("Clear all overrides"):
             st.session_state.injuries = {}
             st.rerun()
+
+# ─────────────────────────────────────────── Team Focus tab ─────────────────
+with tab_focus:
+    _ft = st.selectbox("Choose a team to follow", WC_TEAMS, key="focus_team",
+                       index=WC_TEAMS.index("Brazil"))
+
+    # ── Hero header ──────────────────────────────────────────────────────
+    _ft_code = FLAGS.get(_ft, "")
+    _ft_group = GROUP_OF[_ft]
+    _ft_pred = predictor.predict(_ft, WC_TEAMS[0] if WC_TEAMS[0] != _ft else WC_TEAMS[1],
+                                 neutral=True, injuries={})
+    _ft_elo = _ft_pred.get("elo_home", "—")
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:18px;margin:8px 0 18px 0;">'
+        f'{"<img src=" + chr(34) + flag_url(_ft, 80) + chr(34) + f" width=60 style=" + chr(34) + "border-radius:6px;" + chr(34) + ">" if _ft_code else ""}'
+        f'<div><div style="font-size:1.8rem;font-weight:800;">{html.escape(_ft)}</div>'
+        f'<div style="color:#6b7280;">Group {_ft_group} · Elo {_ft_elo:.0f}</div></div>'
+        f'</div>', unsafe_allow_html=True)
+
+    _fl, _fr = st.columns([1, 1])
+
+    # ── Left: group standing ─────────────────────────────────────────────
+    with _fl:
+        st.markdown("#### Group standing")
+        _ft_teams = config["groups"][_ft_group]
+        _ft_grp_ms = [m for m in group_results + st.session_state.manual_results
+                      if GROUP_OF[m[0]] == _ft_group]
+        _ft_order = standings(_ft_teams, _ft_grp_ms)
+        _ft_qual = _group_qual_status(_ft_teams, _ft_grp_ms)
+        _STATUS_ICON = {"through": "✅", "eliminated": "❌", "contention": ""}
+        _ft_stats = {t: [0, 0, 0, 0] for t in _ft_teams}
+        for _t1, _t2, _s1, _s2 in _ft_grp_ms:
+            for _t, _gf, _ga in ((_t1, _s1, _s2), (_t2, _s2, _s1)):
+                if _t in _ft_stats:
+                    _ft_stats[_t][0] += 1
+                    _ft_stats[_t][1] += 3 if _gf > _ga else (1 if _gf == _ga else 0)
+                    _ft_stats[_t][2] += _gf - _ga
+                    _ft_stats[_t][3] += _gf
+        _ft_tbl = pd.DataFrame(
+            [[flag_url(t), t, *_ft_stats[t], _STATUS_ICON[_ft_qual.get(t, "contention")]]
+             for t in _ft_order],
+            columns=["flag", "team", "P", "Pts", "GD", "GF", "Q"])
+
+        def _hl_focus(row):
+            return ["background-color:rgba(37,99,235,0.18)" if row["team"] == _ft else ""
+                    ] * len(row)
+        st.dataframe(_ft_tbl.style.apply(_hl_focus, axis=1),
+                     hide_index=True, width="stretch",
+                     column_config={"flag": FLAG_COL,
+                                    "Q": st.column_config.TextColumn("", width=24)})
+
+        # This tournament's results for the focus team
+        _ft_results = [(t1, t2, s1, s2) for t1, t2, s1, s2 in
+                       group_results + st.session_state.manual_results
+                       if _ft in (t1, t2)]
+        if _ft_results:
+            st.markdown("#### WC 2026 results")
+            for _t1, _t2, _s1, _s2 in _ft_results:
+                _opp = _t2 if _t1 == _ft else _t1
+                _gf  = _s1 if _t1 == _ft else _s2
+                _ga  = _s2 if _t1 == _ft else _s1
+                _res = "W" if _gf > _ga else ("D" if _gf == _ga else "L")
+                _col = "#16a34a" if _res == "W" else ("#6b7280" if _res == "D" else "#dc2626")
+                _ofc = FLAGS.get(_opp, "")
+                _ofi = f'<img src="https://flagcdn.com/w20/{_ofc}.png" width="14" style="vertical-align:middle;margin-right:4px;">' if _ofc else ""
+                st.markdown(
+                    f'<span style="color:{_col};font-weight:700;font-size:1rem;">{_res}</span>'
+                    f' {_gf}–{_ga} vs {_ofi}{html.escape(_opp)}',
+                    unsafe_allow_html=True)
+
+    # ── Right: stage odds + predicted path ───────────────────────────────
+    with _fr:
+        _sim_out = st.session_state.get("sim_out")
+        if _sim_out is None:
+            st.info("Run the **Tournament Simulator** to see championship odds and predicted path for this team.")
+        else:
+            _ft_row = _sim_out["summary"][_sim_out["summary"]["team"] == _ft]
+            if not _ft_row.empty:
+                st.markdown("#### Championship odds")
+                _stage_cols = ["P(R32)", "P(R16)", "P(QF)", "P(SF)", "P(Final)", "P(Champion)"]
+                _stage_labels = ["R32", "R16", "QF", "SF", "Final", "🏆 Champion"]
+                _stage_colors = ["#475569", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#16a34a"]
+                _odds_fig = go.Figure()
+                for _sc, _sl, _scol in zip(_stage_cols, _stage_labels, _stage_colors):
+                    _val = float(_ft_row[_sc].iloc[0])
+                    _odds_fig.add_trace(go.Bar(
+                        x=[_val], y=[_sl], orientation="h",
+                        marker_color=_scol,
+                        text=[f"{_val:.1%}"], textposition="auto",
+                        showlegend=False))
+                _odds_fig.update_layout(
+                    height=300, xaxis_tickformat=".0%", xaxis_range=[0, 1],
+                    margin=dict(l=0, r=0, t=10, b=0),
+                    yaxis=dict(categoryorder="array", categoryarray=_stage_labels[::-1]))
+                st.plotly_chart(_odds_fig, width="stretch")
+
+                # Predicted bracket path
+                st.markdown("#### Predicted path")
+                _bracket = _sim_out["bracket"]
+                _stage_order = ["r32", "r16", "qf", "sf", "final"]
+                _stage_name  = {"r32": "Round of 32", "r16": "Round of 16",
+                                "qf": "Quarter-final", "sf": "Semi-final", "final": "Final"}
+                _found_path = False
+                for _stg in _stage_order:
+                    for _mn, _md in _bracket.items():
+                        if _md.get("stage") != _stg:
+                            continue
+                        _bft1, _bft2 = _md.get("team1",""), _md.get("team2","")
+                        if _ft not in (_bft1.rstrip("*"), _bft2.rstrip("*")):
+                            continue
+                        _opp_b = _bft2 if _bft1.rstrip("*") == _ft else _bft1
+                        _opp_b_clean = _opp_b.rstrip("*")
+                        _bw = _md.get("winner")
+                        _bp = _md.get("win_prob")
+                        _is_winner = _bw == _ft
+                        _ofc2 = FLAGS.get(_opp_b_clean, "")
+                        _ofi2 = (f'<img src="https://flagcdn.com/w20/{_ofc2}.png" width="14"'
+                                 f' style="vertical-align:middle;margin-right:4px;">') if _ofc2 else ""
+                        _win_icon = "✅" if _is_winner else "❌" if _bw else "?"
+                        _prob_str = ""
+                        if _bp is not None and not _md.get("actual"):
+                            _my_prob = _bp if _is_winner else (1 - _bp)
+                            _prob_str = f" ({_my_prob:.0%})"
+                        st.markdown(
+                            f'**{_stage_name[_stg]}** {_win_icon} vs {_ofi2}{html.escape(_opp_b_clean)}{_prob_str}',
+                            unsafe_allow_html=True)
+                        _found_path = True
+                        break
+                if not _found_path:
+                    st.caption(f"{_ft} does not appear in the most likely bracket path.")
+
+    # ── Next match ───────────────────────────────────────────────────────
+    _upcoming_all = st.session_state.get("upcoming_matches", [])
+    _ft_next = [m for m in _upcoming_all if _ft in (m["home"], m["away"])]
+    if _ft_next:
+        st.divider()
+        st.markdown("#### Next match")
+        _nm = _ft_next[0]
+        _nh, _na = _nm["home"], _nm["away"]
+        _nutc = _nm["utc_date"][:16].replace("T", " ") + " UTC" if _nm["utc_date"] else ""
+        _nc1, _nc2 = st.columns([2, 1])
+        with _nc1:
+            _nhc, _nac = FLAGS.get(_nh, ""), FLAGS.get(_na, "")
+            st.markdown(
+                f'{"<img src=" + chr(34) + flag_url(_nh,40) + chr(34) + " width=28 style=" + chr(34) + "border-radius:3px;" + chr(34) + ">" if _nhc else ""}'
+                f' <b>{html.escape(_nh)}</b> vs <b>{html.escape(_na)}</b>'
+                f' {"<img src=" + chr(34) + flag_url(_na,40) + chr(34) + " width=28 style=" + chr(34) + "border-radius:3px;" + chr(34) + ">" if _nac else ""}'
+                f' <span style="color:#6b7280;font-size:0.85rem">· {html.escape(_nutc)}</span>',
+                unsafe_allow_html=True)
+        with _nc2:
+            try:
+                _npp = predictor.predict(_nh, _na, neutral=True, injuries=st.session_state.injuries)
+                _ft_is_home = _ft == _nh
+                _ft_win_p = _npp["p_home"] if _ft_is_home else _npp["p_away"]
+                st.metric(f"{_ft} win probability", f"{_ft_win_p:.0%}")
+            except Exception:
+                pass
