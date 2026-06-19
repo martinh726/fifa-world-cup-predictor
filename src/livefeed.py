@@ -272,6 +272,27 @@ def fetch_apifootball_live(api_key: str) -> dict[str, dict]:
         return {}
 
 
+def fetch_scheduled_matches(api_key: str, days: int = 30) -> list[dict]:
+    """Return all upcoming scheduled WC 2026 matches for the next N days."""
+    from datetime import timedelta
+    aliases = _alias_map()
+    date_from = date.today().isoformat()
+    date_to = (date.today() + timedelta(days=days)).isoformat()
+    try:
+        resp = requests.get(
+            f"{_BASE}/competitions/{_COMPETITION}/matches",
+            params={"dateFrom": date_from, "dateTo": date_to},
+            headers=_headers(api_key),
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return [_parse_match(m, aliases) for m in resp.json().get("matches", [])
+                if m.get("status") in ("TIMED", "SCHEDULED")]
+    except Exception as e:
+        _log.warning("fetch_scheduled_matches failed: %s", e)
+        return []
+
+
 def get_apifootball_key() -> str | None:
     """Read API-Football (RapidAPI) key from Streamlit secrets or environment variable."""
     try:
