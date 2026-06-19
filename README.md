@@ -14,7 +14,7 @@ Predicts individual match outcomes (win/draw/loss probabilities + scorelines) an
 
 ## Features
 
-### 🎯 Match Predictor
+### Match Predictor
 
 Pick any two teams and get:
 
@@ -24,18 +24,22 @@ Pick any two teams and get:
 - Elo ratings
 - Squad comparison card: market value, FIFA ranking, top-league player share, average caps, coach win rate
 - Injury / suspension overrides that reduce a team's effective squad quality
+- Head-to-head history: all-time record with win/draw/loss breakdown and last 5 meetings
 
-### 🏆 Tournament Simulator
+### Tournament Simulator
 
 Monte Carlo simulation of the remaining bracket (2,000–20,000 runs):
 
 - Championship odds for all 48 teams
 - Per-stage advancement probabilities (Round of 32 through Final)
 - Group finishing positions
-- **Simulated bracket** — shows the most likely matchup and winner for every R32–Final match with win probability badges, rendered round-by-round with flag icons
+- Simulated bracket — shows the most likely matchup and winner for every R32–Final match with win probability badges, rendered round-by-round with flag icons; upset lightning badge on matches where the favourite has under 60% chance
 - Real results locked in automatically; manual result entry as a fallback
+- Team filter and CSV export on the odds table
+- Championship odds trend chart across simulation runs (tracks how odds shift as results come in)
+- Prediction accuracy tracker: correct result %, Brier score, and per-match breakdown
 
-### 🔴 Live (in-game win probability)
+### Live (in-game win probability)
 
 Powered by the [football-data.org](https://www.football-data.org/) free API:
 
@@ -44,13 +48,28 @@ Powered by the [football-data.org](https://www.football-data.org/) free API:
 - Win probability timeline chart that builds up as the match progresses
 - Falls back to today's scheduled matches with pre-match predictions when no game is live
 
-### 📡 Live Tracker
+### Live Tracker
 
 - All played 2026 WC matches synced from the API every 5 minutes (no manual refresh needed)
-- Current group standings with points, goal difference, and goals scored
-- **Live bracket** — visualizes every knockout match (R32 through Final) resolved from actual results; matches already decided show the confirmed winner, upcoming slots display the current group leader with a `*` while the group stage is ongoing
+- Auto-refresh toggle with color-coded sync timestamp
+- Current group standings with points, goal difference, goals scored, and qualification status indicators (through / eliminated / in contention)
+- Live bracket — visualizes every knockout match (R32 through Final) resolved from actual results; matches already decided show the confirmed winner, upcoming slots display the current group leader with a `*` while the group stage is ongoing
+- Upcoming matches panel with kick-off times and pre-match win probabilities
+- Goal stats panel: total goals, goals per game, top scorers, and best defenses
+- Full schedule view for the next 30 days
 - Manual result entry for matches not yet in the dataset
 - Injury / suspension override panel wired into every prediction
+
+### Team Focus
+
+Follow a single team throughout the tournament:
+
+- Hero header with flag, group, and Elo rating
+- Group standing table with the focus team highlighted
+- All WC 2026 results for the team (color-coded wins/draws/losses)
+- Stage-by-stage advancement odds bar chart (R32 through Champion)
+- Predicted bracket path — shows likely opponents and win probabilities at each stage
+- Next match section with kick-off time and pre-match win probability
 
 ## Setup
 
@@ -98,12 +117,11 @@ src/features.py       feature engineering (23 features including altitude)
 src/train.py          model training, calibration, WC backtests
 src/predict.py        MatchPredictor + ingame_probs()
 src/external_data.py  squad quality scores, city altitude loader
-src/livefeed.py       football-data.org API client (live + finished matches)
+src/livefeed.py       football-data.org API client (live, finished, and scheduled matches)
 src/tournament.py     2026 format rules, standings, bracket logic
 src/simulate.py       vectorized Monte Carlo tournament engine
-app.py                Streamlit dashboard (4 tabs)
+app.py                Streamlit dashboard (5 tabs)
 data/wc2026.json      groups, bracket, team-name aliases
 data/squad_data.json  squad quality data for all 48 WC 2026 teams
 data/city_altitude.json  venue altitude lookup (120+ cities)
 ```
-
