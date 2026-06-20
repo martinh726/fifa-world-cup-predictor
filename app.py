@@ -1213,7 +1213,9 @@ with tab_live:
                         st.caption("No upcoming matches found.")
                     else:
                         for _sm in _sched:
-                            _sh, _sa = _sm["home"], _sm["away"]
+                            _sh, _sa = _sm.get("home") or "", _sm.get("away") or ""
+                            if not _sh or not _sa:
+                                continue
                             _sutc = _sm["utc_date"][:16].replace("T", " ") + " UTC" if _sm["utc_date"] else ""
                             _sday = _sm["utc_date"][:10] if _sm["utc_date"] else ""
                             _sc1, _sc2 = st.columns([2, 1])
