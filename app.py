@@ -356,6 +356,93 @@ def _group_qual_status(teams: list, matches: list) -> dict[str, str]:
     return status
 
 
+def _remaining_matches(teams, matches):
+    from itertools import combinations
+    played_pairs: set[tuple] = set()
+    for t1, t2, _, _ in matches:
+        played_pairs.add((t1, t2))
+        played_pairs.add((t2, t1))
+    return [(a, b) for a, b in combinations(teams, 2) if (a, b) not in played_pairs]
+
+
+def _qual_scenario(teams, matches):
+    """Per-team qualification scenario for a group (status + human-readable message)."""
+    stats = {t: {"pts": 0, "gd": 0, "gf": 0, "played": 0} for t in teams}
+    for t1, t2, s1, s2 in matches:
+        for t, gf, ga in ((t1, s1, s2), (t2, s2, s1)):
+            if t in stats:
+                stats[t]["played"] += 1
+                stats[t]["pts"] += 3 if gf > ga else (1 if gf == ga else 0)
+                stats[t]["gd"] += gf - ga
+                stats[t]["gf"] += gf
+    order = sorted(teams, key=lambda t: (-stats[t]["pts"], -stats[t]["gd"], -stats[t]["gf"], t))
+    for i, t in enumerate(order):
+        stats[t]["rank"] = i + 1
+    pts_2nd = stats[order[1]]["pts"]
+    qual = _group_qual_status(teams, matches)
+    rem_fix = _remaining_matches(teams, matches)
+    result = {}
+    for t in teams:
+        s = stats[t]
+        remaining = 3 - s["played"]
+        max_pts = s["pts"] + 3 * remaining
+        gap_to_2nd = s["pts"] - pts_2nd
+        can_reach_2nd = max_pts >= pts_2nd
+        status = qual.get(t, "contention")
+        next_opp = [b if a == t else a for a, b in rem_fix if t in (a, b)]
+        if status == "through":
+            msg = "Qualified for Round of 32"
+        elif status == "eliminated":
+            msg = "Mathematically eliminated"
+        else:
+            rank = s["rank"]
+            pts_of_3rd = stats[order[2]]["pts"]
+            if rank <= 2:
+                lead = s["pts"] - pts_of_3rd
+                g = "game" if remaining == 1 else "games"
+                msg = f"In {'1st' if rank == 1 else '2nd'} — {lead:+d} pts vs 3rd, {remaining} {g} left"
+            else:
+                needed = pts_2nd - s["pts"]
+                if can_reach_2nd:
+                    g = "game" if remaining == 1 else "games"
+                    if remaining == 1:
+                        msg = "Must win next game to reach 2nd" if needed >= 3 else "Win or draw to reach 2nd"
+                    else:
+                        msg = f"Need {needed} pts from {remaining} {g} to reach 2nd"
+                else:
+                    msg = f"Cannot reach 2nd — in best-third race ({s['pts']} pts)"
+        result[t] = {**s, "remaining": remaining, "max_pts": max_pts,
+                     "gap_to_2nd": gap_to_2nd, "can_reach_2nd": can_reach_2nd,
+                     "status": status, "message": msg, "next_opponents": next_opp}
+    return result
+
+
+def _third_place_race(config_data, all_played):
+    """Rank all 12 groups' current 3rd-place teams by FIFA criteria (pts→GD→GF)."""
+    thirds = []
+    for letter in sorted(config_data["groups"].keys()):
+        teams = config_data["groups"][letter]
+        ms = [m for m in all_played if GROUP_OF[m[0]] == letter]
+        if not ms:
+            continue
+        order = standings(teams, ms)
+        if len(order) < 3:
+            continue
+        t = order[2]
+        st3 = {"pts": 0, "gd": 0, "gf": 0, "played": 0}
+        for t1, t2, s1, s2 in ms:
+            for tt, gf_, ga_ in ((t1, s1, s2), (t2, s2, s1)):
+                if tt == t:
+                    st3["played"] += 1
+                    st3["pts"] += 3 if gf_ > ga_ else (1 if gf_ == ga_ else 0)
+                    st3["gd"] += gf_ - ga_
+                    st3["gf"] += gf_
+        thirds.append({"group": letter, "team": t, **st3,
+                       "remaining": 3 - st3["played"], "group_done": len(ms) == 6})
+    thirds.sort(key=lambda x: (-x["pts"], -x["gd"], -x["gf"], x["team"]))
+    return thirds
+
+
 # ── Sidebar ─────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("⚽ WC 2026 Predictor")
@@ -1006,6 +1093,80 @@ with tab_live:
                     st.markdown(f"**Group {letter}**")
                     st.dataframe(tbl, width="stretch", hide_index=True,
                                  column_config={"flag": FLAG_COL, "Q": st.column_config.TextColumn("", width=24)})
+                    scenarios = _qual_scenario(teams, ms)
+                    _SC_COLOR = {"through": "#22c55e", "eliminated": "#ef4444", "contention": "#f59e0b"}
+                    for _j, _t in enumerate(order):
+                        _sc = scenarios[_t]
+                        _fc = FLAGS.get(_t, "")
+                        _fi = (f'<img src="https://flagcdn.com/w20/{_fc}.png" width="13" '
+                               f'style="vertical-align:middle;margin-right:3px;">') if _fc else ""
+                        _clr = _SC_COLOR[_sc["status"]]
+                        st.markdown(
+                            f'<div style="font-size:12px;margin:2px 0;">{_fi}'
+                            f'<span style="color:{_clr};font-weight:600;">{html.escape(_t)}</span>'
+                            f' — <span style="color:{_clr};">{html.escape(_sc["message"])}</span></div>',
+                            unsafe_allow_html=True)
+                        if _j < len(order) - 1:
+                            _next_t = order[_j + 1]
+                            _gap = _sc["pts"] - scenarios[_next_t]["pts"]
+                            if _gap > 0:
+                                st.markdown(
+                                    f'<div style="font-size:10px;color:#6b7280;margin:-1px 0 2px 16px;">'
+                                    f'↕ {_gap} pt gap</div>',
+                                    unsafe_allow_html=True)
+                    _rem = _remaining_matches(teams, ms)
+                    if _rem:
+                        st.markdown(
+                            '<div style="font-size:11px;color:#9ca3af;margin-top:8px;">'
+                            'Remaining fixtures:</div>',
+                            unsafe_allow_html=True)
+                        for _ra, _rb in _rem:
+                            _fac = FLAGS.get(_ra, ""); _fbc = FLAGS.get(_rb, "")
+                            _fai = (f'<img src="https://flagcdn.com/w16/{_fac}.png" width="12" '
+                                    f'style="vertical-align:middle;margin-right:2px;">') if _fac else ""
+                            _fbi = (f'<img src="https://flagcdn.com/w16/{_fbc}.png" width="12" '
+                                    f'style="vertical-align:middle;margin-right:2px;">') if _fbc else ""
+                            st.markdown(
+                                f'<div style="font-size:11px;margin:2px 0;">'
+                                f'{_fai}{html.escape(_ra)} vs {_fbi}{html.escape(_rb)}</div>',
+                                unsafe_allow_html=True)
+
+            # ── Third-place race ─────────────────────────────────────────
+            with st.expander("Third-place race — best 8 advance to R32"):
+                st.caption(
+                    "The 8 best third-place finishers across all 12 groups also advance to the "
+                    "Round of 32. Ranked by Points → Goal Difference → Goals For (FIFA criteria).")
+                _thirds = _third_place_race(config, all_played)
+                if not _thirds:
+                    st.info("No groups have started yet.")
+                else:
+                    _t_rows = []
+                    for _ri, _d in enumerate(_thirds):
+                        if _ri < 8:
+                            _slbl = "In" if _d["group_done"] else "On track"
+                        else:
+                            _slbl = "Out" if _d["group_done"] else "At risk"
+                        _t_rows.append({
+                            "flag": flag_url(_d["team"]),
+                            "team": _d["team"],
+                            "Grp": _d["group"],
+                            "P": _d["played"],
+                            "Pts": _d["pts"],
+                            "GD": _d["gd"],
+                            "GF": _d["gf"],
+                            "Status": _slbl,
+                        })
+                    _thirds_df = pd.DataFrame(_t_rows)
+                    _cutoff = min(8, len(_thirds_df))
+                    if _cutoff > 0:
+                        st.markdown("**Currently qualifying (top 8 thirds)**")
+                        st.dataframe(_thirds_df.iloc[:_cutoff], hide_index=True, width="stretch",
+                                     column_config={"flag": FLAG_COL})
+                    if len(_thirds_df) > _cutoff:
+                        st.divider()
+                        st.markdown("**Below the cutoff**")
+                        st.dataframe(_thirds_df.iloc[_cutoff:], hide_index=True, width="stretch",
+                                     column_config={"flag": FLAG_COL})
 
             # ── Goal statistics ───────────────────────────────────────────
             with st.expander("⚽ Tournament goal statistics"):
