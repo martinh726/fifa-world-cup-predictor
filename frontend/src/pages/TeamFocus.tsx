@@ -5,6 +5,7 @@ import { useAppStore } from '../store/useAppStore'
 import { FlagImage } from '../components/shared/FlagImage'
 import { SingleTeamOddsBar } from '../components/charts/ChampionshipOddsBar'
 import { MetricCard } from '../components/shared/MetricCard'
+import { formatLocalKickoff } from '../utils/time'
 
 const STAGE_LABELS: Record<string, string> = {
   'P(R32)': 'Round of 32', 'P(R16)': 'Round of 16',
@@ -220,9 +221,7 @@ export function TeamFocus() {
                   <span className="font-bold text-white">{data.next_match.away}</span>
                 </div>
                 <div className="text-sm text-slate-400">
-                  {data.next_match.utc_date
-                    ? data.next_match.utc_date.slice(0, 16).replace('T', ' ') + ' UTC'
-                    : ''}
+                  {formatLocalKickoff(data.next_match.utc_date)}
                 </div>
               </div>
               {data.next_match.prediction && (

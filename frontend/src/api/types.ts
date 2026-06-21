@@ -144,6 +144,7 @@ export interface StandingTeam {
   pts: number
   gd: number
   gf: number
+  wins: number
   status: 'through' | 'contention' | 'eliminated'
   message: string
   next_opponents: string[]
@@ -162,6 +163,7 @@ export interface ThirdPlaceTeam {
   pts: number
   gd: number
   gf: number
+  wins: number
   remaining: number
   group_done: boolean
 }

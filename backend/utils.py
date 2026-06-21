@@ -34,7 +34,14 @@ def merge_api_finished(group_results: list, ko_results: list,
 
 
 def group_qual_status(teams: list, matches: list) -> dict[str, str]:
-    """Return 'through' | 'contention' | 'eliminated' for each team."""
+    """Return 'through' | 'contention' | 'eliminated' per team.
+
+    2026 WC rule: top 2 per group qualify automatically; the 8 best third-place
+    teams across all 12 groups also advance.  A team is only truly 'eliminated'
+    when they are mathematically guaranteed 4th place (cannot even be the group's
+    third-place representative).  Being locked into 3rd is NOT elimination — the
+    team is still competing for one of the 8 best-third slots.
+    """
     pts = {t: 0 for t in teams}
     played = {t: 0 for t in teams}
     for t1, t2, s1, s2 in matches:
@@ -47,13 +54,20 @@ def group_qual_status(teams: list, matches: list) -> dict[str, str]:
     max_pts = {t: pts[t] + 3 * (3 - played[t]) for t in teams}
     status = {}
     for t in teams:
+        # Teams whose current points already exceed t's theoretical maximum
         guaranteed_above = sum(1 for o in teams if o != t and pts[o] > max_pts[t])
+        # Teams that could still end above t in any possible remaining scenario
         possibly_above   = sum(1 for o in teams if o != t and max_pts[o] > pts[t])
-        if guaranteed_above >= 2:
+        if guaranteed_above >= 3:
+            # 3 teams definitely finish above → t is guaranteed last (4th)
+            # → cannot be the group's 3rd-place representative → truly eliminated
             status[t] = "eliminated"
         elif possibly_above < 2:
+            # Even in the worst case ≤1 team can pass t → guaranteed top 2
             status[t] = "through"
         else:
+            # Could finish anywhere from 1st to 3rd (or even 4th)
+            # 3rd-place finish still keeps best-third route open
             status[t] = "contention"
     return status
 
@@ -67,8 +81,17 @@ def remaining_matches(teams: list, matches: list) -> list[tuple]:
 
 
 def qual_scenario(teams: list, matches: list) -> dict[str, dict]:
-    """Per-team qualification scenario (status + human-readable message)."""
-    stats = {t: {"pts": 0, "gd": 0, "gf": 0, "played": 0} for t in teams}
+    """Per-team qualification scenario (status + human-readable message).
+
+    2026 WC rules applied:
+    - Top 2 per group → auto-qualify for R32
+    - 3rd place → competes for one of 8 best-third spots (NOT eliminated)
+    - 4th place → eliminated (only position with zero advancement paths)
+    Ranking within a group uses the FIFA 2026 tiebreaker order via standings().
+    """
+    from src.tournament import standings as fifa_standings
+
+    stats = {t: {"pts": 0, "gd": 0, "gf": 0, "wins": 0, "played": 0} for t in teams}
     for t1, t2, s1, s2 in matches:
         for t, gf, ga in ((t1, s1, s2), (t2, s2, s1)):
             if t in stats:
@@ -76,49 +99,75 @@ def qual_scenario(teams: list, matches: list) -> dict[str, dict]:
                 stats[t]["pts"] += 3 if gf > ga else (1 if gf == ga else 0)
                 stats[t]["gd"] += gf - ga
                 stats[t]["gf"] += gf
-    order = sorted(teams, key=lambda t: (-stats[t]["pts"], -stats[t]["gd"], -stats[t]["gf"], t))
+                stats[t]["wins"] += 1 if gf > ga else 0
+
+    # Use the FIFA-correct tiebreaker ranking (pts → GD → GF → H2H → wins)
+    order = fifa_standings(teams, matches) if matches else list(teams)
     for i, t in enumerate(order):
         stats[t]["rank"] = i + 1
+
+    max_pts = {t: stats[t]["pts"] + 3 * (3 - stats[t]["played"]) for t in teams}
     pts_2nd = stats[order[1]]["pts"] if len(order) > 1 else 0
+    pts_3rd = stats[order[2]]["pts"] if len(order) > 2 else 0
+
     qual = group_qual_status(teams, matches)
     rem_fix = remaining_matches(teams, matches)
+
     result = {}
     for t in teams:
         s = stats[t]
         rem = 3 - s["played"]
-        max_pts = s["pts"] + 3 * rem
-        can_reach_2nd = max_pts >= pts_2nd
+        mp = max_pts[t]
+        can_reach_2nd = mp >= pts_2nd
         status = qual.get(t, "contention")
         next_opp = [b if a == t else a for a, b in rem_fix if t in (a, b)]
-        pts_of_3rd = stats[order[2]]["pts"] if len(order) > 2 else 0
+
+        # Number of teams mathematically guaranteed to finish above t
+        guaranteed_above = sum(1 for o in teams if o != t and stats[o]["pts"] > mp)
+        locked_out_of_top2 = guaranteed_above >= 2  # definitely 3rd or 4th
+
+        g = "game" if rem == 1 else "games"
+
         if status == "through":
-            msg = "Qualified for Round of 32"
+            msg = "Qualified for R32 (top 2 guaranteed)"
         elif status == "eliminated":
-            msg = "Mathematically eliminated"
+            msg = "Eliminated — mathematically 4th place"
+        elif locked_out_of_top2:
+            # Locked into 3rd — still alive via best-third route
+            msg = f"3rd place — in best-third race ({s['pts']} pts, {rem} {g} left)"
         else:
             rank = s["rank"]
             if rank <= 2:
-                lead = s["pts"] - pts_of_3rd
-                g = "game" if rem == 1 else "games"
-                msg = f"In {'1st' if rank == 1 else '2nd'} — {lead:+d} pts vs 3rd, {rem} {g} left"
+                lead = s["pts"] - pts_3rd
+                msg = (f"{'1st' if rank == 1 else '2nd'} place — "
+                       f"{lead:+d} pts ahead of 3rd, {rem} {g} left")
             else:
                 needed = pts_2nd - s["pts"]
-                if can_reach_2nd:
-                    g = "game" if rem == 1 else "games"
-                    if rem == 1:
-                        msg = "Must win next game to reach 2nd" if needed >= 3 else "Win or draw to reach 2nd"
+                if rem == 0:
+                    msg = f"3rd place — in best-third race ({s['pts']} pts)"
+                elif rem == 1:
+                    if needed >= 3:
+                        msg = "Must win to reach 2nd; a loss keeps best-third hopes only"
+                    elif needed > 0:
+                        msg = "Win or draw to secure 2nd; best-third still possible on loss"
                     else:
-                        msg = f"Need {needed} pts from {rem} {g} to reach 2nd"
+                        msg = "Level with 2nd — head-to-head may decide, 1 game left"
                 else:
-                    msg = f"Cannot reach 2nd — in best-third race ({s['pts']} pts)"
-        result[t] = {**s, "remaining": rem, "max_pts": max_pts,
+                    msg = (f"Need {needed} pts from {rem} {g} to reach 2nd; "
+                           f"3rd can still qualify as best third")
+
+        result[t] = {**s, "remaining": rem, "max_pts": mp,
                      "can_reach_2nd": can_reach_2nd,
                      "status": status, "message": msg, "next_opponents": next_opp}
     return result
 
 
 def third_place_race(config: dict, all_played: list) -> list[dict]:
-    """Rank all 12 groups' current 3rd-place teams by FIFA criteria."""
+    """Rank all 12 groups' current 3rd-place teams by FIFA 2026 criteria.
+
+    Official ranking order for best-third selection (FIFA 2026 regulations):
+    1. Points  2. GD  3. GF  4. Wins  5. Fair play / FIFA rank (→ team name as tie-break)
+    """
     from src.tournament import standings
 
     group_of = {t: g for g, ts in config["groups"].items() for t in ts}
@@ -132,7 +181,7 @@ def third_place_race(config: dict, all_played: list) -> list[dict]:
         if len(order) < 3:
             continue
         t = order[2]
-        st3 = {"pts": 0, "gd": 0, "gf": 0, "played": 0}
+        st3 = {"pts": 0, "gd": 0, "gf": 0, "wins": 0, "played": 0}
         for t1, t2, s1, s2 in ms:
             for tt, gf_, ga_ in ((t1, s1, s2), (t2, s2, s1)):
                 if tt == t:
@@ -140,10 +189,12 @@ def third_place_race(config: dict, all_played: list) -> list[dict]:
                     st3["pts"] += 3 if gf_ > ga_ else (1 if gf_ == ga_ else 0)
                     st3["gd"] += gf_ - ga_
                     st3["gf"] += gf_
+                    st3["wins"] += 1 if gf_ > ga_ else 0
         thirds.append({"group": letter, "team": t, **st3,
                        "remaining": 3 - st3["played"],
                        "group_done": len(ms) == 6})
-    thirds.sort(key=lambda x: (-x["pts"], -x["gd"], -x["gf"], x["team"]))
+    # pts → GD → GF → wins → team name (stand-in for fair play / FIFA rank)
+    thirds.sort(key=lambda x: (-x["pts"], -x["gd"], -x["gf"], -x["wins"], x["team"]))
     return thirds
 
 

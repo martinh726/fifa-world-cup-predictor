@@ -7,9 +7,18 @@ import { BracketViewer } from '../components/bracket/BracketViewer'
 import { useQuery } from '@tanstack/react-query'
 import { fetchTeams, fetchSchedule } from '../api'
 import type { ThirdPlaceTeam } from '../api/types'
+import { formatLocalKickoff } from '../utils/time'
 
 const STATUS_ICON = { through: '✅', eliminated: '❌', contention: '' } as Record<string, string>
 const STATUS_COLOR = { through: '#22c55e', eliminated: '#ef4444', contention: '#f59e0b' } as Record<string, string>
+
+function statusLabel(t: { status: string; message: string }) {
+  if (t.status === 'through') return { icon: '✅', color: '#22c55e' }
+  if (t.status === 'eliminated') return { icon: '❌', color: '#ef4444' }
+  // In 2026 WC, 3rd place competes for best-third slot — use amber for the race
+  if (t.message.includes('best-third')) return { icon: '🏅', color: '#f59e0b' }
+  return { icon: '', color: '#94a3b8' }
+}
 
 export function LiveTracker() {
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -124,36 +133,44 @@ export function LiveTracker() {
                       <thead>
                         <tr className="text-slate-400 border-b border-slate-700">
                           <th className="text-left py-0.5">Team</th>
-                          <th className="text-right py-0.5">P</th>
-                          <th className="text-right py-0.5">Pts</th>
-                          <th className="text-right py-0.5">GD</th>
-                          <th className="text-right py-0.5">GF</th>
-                          <th className="py-0.5 w-4"></th>
+                          <th className="text-right py-0.5 px-1">P</th>
+                          <th className="text-right py-0.5 px-1">W</th>
+                          <th className="text-right py-0.5 px-1">Pts</th>
+                          <th className="text-right py-0.5 px-1">GD</th>
+                          <th className="text-right py-0.5 px-1">GF</th>
+                          <th className="py-0.5 w-5"></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {group.teams.map(t => (
-                          <tr key={t.team} className="border-b border-slate-700/30">
-                            <td className="py-0.5">
-                              <FlagImage code={flags[t.team]} size={12} />{' '}{t.team}
-                            </td>
-                            <td className="text-right py-0.5 text-slate-400">{t.played}</td>
-                            <td className="text-right py-0.5 font-bold text-white">{t.pts}</td>
-                            <td className="text-right py-0.5 text-slate-300">{t.gd > 0 ? '+' : ''}{t.gd}</td>
-                            <td className="text-right py-0.5 text-slate-300">{t.gf}</td>
-                            <td className="text-center py-0.5">{STATUS_ICON[t.status]}</td>
-                          </tr>
-                        ))}
+                        {group.teams.map(t => {
+                          const { icon, color } = statusLabel(t)
+                          return (
+                            <tr key={t.team} className="border-b border-slate-700/30">
+                              <td className="py-0.5">
+                                <FlagImage code={flags[t.team]} size={12} />{' '}{t.team}
+                              </td>
+                              <td className="text-right py-0.5 px-1 text-slate-400">{t.played}</td>
+                              <td className="text-right py-0.5 px-1 text-slate-300">{t.wins ?? 0}</td>
+                              <td className="text-right py-0.5 px-1 font-bold text-white">{t.pts}</td>
+                              <td className="text-right py-0.5 px-1 text-slate-300">{t.gd > 0 ? '+' : ''}{t.gd}</td>
+                              <td className="text-right py-0.5 px-1 text-slate-300">{t.gf}</td>
+                              <td className="text-center py-0.5">{icon}</td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
-                    {/* Scenarios */}
+                    {/* Scenarios — colour reflects 2026 WC advancement path */}
                     <div className="mt-2 space-y-0.5">
-                      {group.teams.map(t => (
-                        <div key={t.team} className="text-xs" style={{ color: STATUS_COLOR[t.status] }}>
-                          <FlagImage code={flags[t.team]} size={10} />{' '}
-                          <strong>{t.team}</strong> — {t.message}
-                        </div>
-                      ))}
+                      {group.teams.map(t => {
+                        const { color } = statusLabel(t)
+                        return (
+                          <div key={t.team} className="text-xs" style={{ color }}>
+                            <FlagImage code={flags[t.team]} size={10} />{' '}
+                            <strong>{t.team}</strong> — {t.message}
+                          </div>
+                        )
+                      })}
                     </div>
                     {/* Remaining fixtures */}
                     {group.remaining_fixtures.length > 0 && (
@@ -232,7 +249,7 @@ export function LiveTracker() {
                     <span className="text-slate-400">vs</span>
                     <FlagImage code={flags[m.away]} size={14} />{' '}
                     <span className="font-semibold text-white">{m.away}</span>
-                    <span className="text-slate-500">{m.utc_date ? m.utc_date.slice(0, 16).replace('T', ' ') + ' UTC' : ''}</span>
+                    <span className="text-slate-500">{formatLocalKickoff(m.utc_date)}</span>
                   </div>
                   {m.prediction && (
                     <div className="flex gap-2 text-xs">
@@ -319,7 +336,7 @@ function ThirdPlaceTable({ thirds, flags }: { thirds: ThirdPlaceTeam[]; flags: R
   const rest = thirds.slice(8)
   return (
     <div className="mt-2 bg-slate-800 rounded-xl p-4 space-y-3">
-      <p className="text-xs text-slate-400">Top 8 third-place finishers advance to R32 (ranked by Pts → GD → GF).</p>
+      <p className="text-xs text-slate-400">Top 8 third-place finishers advance to R32. FIFA 2026 ranking: Pts → GD → GF → Wins.</p>
       <ThirdTable rows={top8} flags={flags} label="Currently qualifying (top 8)" />
       {rest.length > 0 && <ThirdTable rows={rest} flags={flags} label="Below the cutoff" />}
     </div>
@@ -335,10 +352,11 @@ function ThirdTable({ rows, flags, label }: { rows: ThirdPlaceTeam[]; flags: Rec
           <tr className="text-slate-400 border-b border-slate-700">
             <th className="text-left py-0.5">Grp</th>
             <th className="text-left py-0.5">Team</th>
-            <th className="text-right py-0.5">P</th>
-            <th className="text-right py-0.5">Pts</th>
-            <th className="text-right py-0.5">GD</th>
-            <th className="text-right py-0.5">GF</th>
+            <th className="text-right py-0.5 px-1">P</th>
+            <th className="text-right py-0.5 px-1">W</th>
+            <th className="text-right py-0.5 px-1">Pts</th>
+            <th className="text-right py-0.5 px-1">GD</th>
+            <th className="text-right py-0.5 px-1">GF</th>
           </tr>
         </thead>
         <tbody>
@@ -349,10 +367,11 @@ function ThirdTable({ rows, flags, label }: { rows: ThirdPlaceTeam[]; flags: Rec
                 <FlagImage code={flags[r.team]} size={12} />{' '}{r.team}
                 {!r.group_done && <span className="text-slate-500 ml-1">({r.remaining} left)</span>}
               </td>
-              <td className="text-right py-0.5 text-slate-400">{r.played}</td>
-              <td className="text-right py-0.5 font-bold text-white">{r.pts}</td>
-              <td className="text-right py-0.5 text-slate-300">{r.gd > 0 ? '+' : ''}{r.gd}</td>
-              <td className="text-right py-0.5 text-slate-300">{r.gf}</td>
+              <td className="text-right py-0.5 px-1 text-slate-400">{r.played}</td>
+              <td className="text-right py-0.5 px-1 text-slate-300">{r.wins ?? 0}</td>
+              <td className="text-right py-0.5 px-1 font-bold text-white">{r.pts}</td>
+              <td className="text-right py-0.5 px-1 text-slate-300">{r.gd > 0 ? '+' : ''}{r.gd}</td>
+              <td className="text-right py-0.5 px-1 text-slate-300">{r.gf}</td>
             </tr>
           ))}
         </tbody>

@@ -5,6 +5,7 @@ import { FlagImage } from '../components/shared/FlagImage'
 import { WinProbTimeline } from '../components/charts/WinProbTimeline'
 import { useQuery } from '@tanstack/react-query'
 import { fetchTeams } from '../api'
+import { formatLocalKickoff, formatLocalTime } from '../utils/time'
 
 function ProbBadge({ label, value, color }: { label: string; value: number; color: string }) {
   return (
@@ -137,7 +138,7 @@ export function Live() {
                       <span className="font-semibold text-white">{m.away}</span>
                     </div>
                     <div className="text-slate-400 text-sm">
-                      {m.utc_date ? m.utc_date.slice(11, 16) + ' UTC' : ''}
+                      {formatLocalTime(m.utc_date)}
                     </div>
                   </div>
                   {m.prediction && (

@@ -27,7 +27,7 @@ def _build_standings_data(config: dict, all_played: list) -> dict:
         order = standings(teams, ms)
         scenarios = qual_scenario(teams, ms)
 
-        stats_tbl = {t: {"played": 0, "pts": 0, "gd": 0, "gf": 0} for t in teams}
+        stats_tbl = {t: {"played": 0, "pts": 0, "gd": 0, "gf": 0, "wins": 0} for t in teams}
         for t1, t2, s1, s2 in ms:
             for t, gf_, ga_ in ((t1, s1, s2), (t2, s2, s1)):
                 if t in stats_tbl:
@@ -35,6 +35,7 @@ def _build_standings_data(config: dict, all_played: list) -> dict:
                     stats_tbl[t]["pts"] += 3 if gf_ > ga_ else (1 if gf_ == ga_ else 0)
                     stats_tbl[t]["gd"] += gf_ - ga_
                     stats_tbl[t]["gf"] += gf_
+                    stats_tbl[t]["wins"] += 1 if gf_ > ga_ else 0
 
         from backend.utils import remaining_matches
         rem = remaining_matches(teams, ms)
