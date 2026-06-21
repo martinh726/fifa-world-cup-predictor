@@ -6,11 +6,27 @@
 
 Predicts individual match outcomes (win/draw/loss probabilities + scorelines) and simulates the full 2026 World Cup bracket (48 teams, USA/Canada/Mexico) thousands of times to estimate every team's championship odds — updating live as real tournament results come in.
 
+Full-stack application: **FastAPI** backend exposing the ML/simulation engine as a JSON API, **React + Vite** frontend with real-time polling.
+
 ## Quick start
 
-```powershell
-.venv\Scripts\python.exe -m streamlit run app.py
+### Backend (terminal 1)
+
+```bash
+.venv/Scripts/uvicorn backend.main:app --reload --port 8000
 ```
+
+### Frontend (terminal 2)
+
+```bash
+cd frontend
+npm install      # first time only
+npm run dev
+```
+
+Then open **http://localhost:5173** in your browser.
+
+> **API only**: the backend is also browsable at http://localhost:8000/docs (Swagger UI).
 
 ## Features
 
@@ -23,7 +39,7 @@ Pick any two teams and get:
 - Expected goals (xG) for each side
 - Elo ratings
 - Squad comparison card: market value, FIFA ranking, top-league player share, average caps, coach win rate
-- Injury / suspension overrides that reduce a team's effective squad quality
+- Injury / suspension overrides that reduce a team's effective squad quality (sidebar)
 - Head-to-head history: all-time record with win/draw/loss breakdown and last 5 meetings
 
 ### Tournament Simulator
@@ -35,7 +51,6 @@ Monte Carlo simulation of the remaining bracket (2,000–20,000 runs):
 - Group finishing positions
 - Simulated bracket — shows the most likely matchup and winner for every R32–Final match with win probability badges, rendered round-by-round with flag icons; upset lightning badge on matches where the favourite has under 60% chance
 - Real results locked in automatically; manual result entry as a fallback
-- Team filter and CSV export on the odds table
 - Championship odds trend chart across simulation runs (tracks how odds shift as results come in)
 - Prediction accuracy tracker: correct result %, Brier score, and per-match breakdown
 
@@ -43,22 +58,20 @@ Monte Carlo simulation of the remaining bracket (2,000–20,000 runs):
 
 Powered by the [football-data.org](https://www.football-data.org/) free API:
 
-- Auto-fetches live WC matches every 30 seconds (uses `@st.fragment` so only the live panel refreshes — the rest of the page stays stable)
+- Auto-fetches live WC matches every 30 seconds
 - Displays current score, minute, and real-time win probabilities computed from Poisson remaining-goals math
 - Win probability timeline chart that builds up as the match progresses
 - Falls back to today's scheduled matches with pre-match predictions when no game is live
 
 ### Live Tracker
 
-- All played 2026 WC matches synced from the API every 5 minutes (no manual refresh needed)
-- Auto-refresh toggle with color-coded sync timestamp
-- Current group standings with points, goal difference, goals scored, and qualification status indicators (through / eliminated / in contention)
-- Live bracket — visualizes every knockout match (R32 through Final) resolved from actual results; matches already decided show the confirmed winner, upcoming slots display the current group leader with a `*` while the group stage is ongoing
-- Upcoming matches panel with kick-off times and pre-match win probabilities
-- Goal stats panel: total goals, goals per game, top scorers, and best defenses
-- Full schedule view for the next 30 days
+- All played 2026 WC matches synced from the API every 5 minutes (auto-refresh toggle)
+- Current group standings with points, goal difference, goals scored, and qualification status indicators (through / eliminated / in contention) with per-team scenario messages
+- Third-place race tracker: current top-8 vs below-cutoff split
+- Live bracket — visualizes every knockout match (R32 through Final) from actual results
+- Goal stats panel: total goals, goals per game, top scorers, and best defences
+- Full schedule view for the next 30 days with pre-match predictions
 - Manual result entry for matches not yet in the dataset
-- Injury / suspension override panel wired into every prediction
 
 ### Team Focus
 
@@ -66,33 +79,60 @@ Follow a single team throughout the tournament:
 
 - Hero header with flag, group, and Elo rating
 - Group standing table with the focus team highlighted
-- All WC 2026 results for the team (color-coded wins/draws/losses)
+- All WC 2026 results for the team (colour-coded wins/draws/losses)
 - Stage-by-stage advancement odds bar chart (R32 through Champion)
 - Predicted bracket path — shows likely opponents and win probabilities at each stage
-- Next match section with kick-off time and pre-match win probability
+- Next match card with kick-off time and pre-match win probability
 
 ## Setup
 
-### Basic (no live scores)
+### Prerequisites
 
-```powershell
+```bash
+# Python dependencies (ML + backend)
 pip install -r requirements.txt
-python -m src.train        # train the model
-streamlit run app.py
+pip install -r requirements-api.txt
+
+# Train the model (required before first run)
+.venv/Scripts/python.exe -m src.train
 ```
 
-### With live scores
+### Environment variables
 
-1. Sign up free at [football-data.org](https://www.football-data.org/)
-2. Copy `.streamlit/secrets.toml.example` → `.streamlit/secrets.toml`
-3. Paste your API key and restart the app
+Copy `.env.example` to `.env` and fill in your API keys:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Description |
+|---|---|
+| `FOOTBALL_DATA_API_KEY` | Free key from [football-data.org](https://www.football-data.org/) — enables live scores |
+| `APIFOOTBALL_API_KEY` | Optional second source |
+| `SQUAD_STRENGTH` | Blend weight for squad quality adjustment (default `0.18`) |
+
+### Frontend dependencies
+
+```bash
+cd frontend && npm install
+```
+
+## Running
+
+```bash
+# Backend (from project root)
+.venv/Scripts/uvicorn backend.main:app --reload --port 8000
+
+# Frontend (separate terminal)
+cd frontend && npm run dev
+```
 
 ## Retraining
 
 Re-run every few days so the models also learn from completed WC matches:
 
-```powershell
-.venv\Scripts\python.exe -m src.train
+```bash
+.venv/Scripts/python.exe -m src.train
 ```
 
 This refreshes `models/` and updates `reports/backtest.md`.
@@ -111,17 +151,49 @@ This refreshes `models/` and updates `reports/backtest.md`.
 ## Project layout
 
 ```
-src/data_loader.py    download + normalize the results dataset
-src/elo.py            Elo ratings over the full history
-src/features.py       feature engineering (23 features including altitude)
-src/train.py          model training, calibration, WC backtests
-src/predict.py        MatchPredictor + ingame_probs()
-src/external_data.py  squad quality scores, city altitude loader
-src/livefeed.py       football-data.org API client (live, finished, and scheduled matches)
-src/tournament.py     2026 format rules, standings, bracket logic
-src/simulate.py       vectorized Monte Carlo tournament engine
-app.py                Streamlit dashboard (5 tabs)
-data/wc2026.json      groups, bracket, team-name aliases
-data/squad_data.json  squad quality data for all 48 WC 2026 teams
-data/city_altitude.json  venue altitude lookup (120+ cities)
+backend/
+  main.py              FastAPI app, lifespan startup, CORS, static file serving
+  deps.py              AppState singleton (predictor, results, last sim result)
+  cache.py             TTLCache — live (30s), results (300s), schedule (600s)
+  bracket_svg.py       Pure-Python SVG bracket renderer (extracted from app.py)
+  utils.py             Standings, qual scenarios, goal stats, accuracy helpers
+  routers/
+    teams.py           GET /api/teams, POST /api/refresh, GET /api/backtest-report
+    predict.py         GET /api/predict (probs, xG, scoreline matrix, H2H, squad)
+    simulate.py        POST /api/simulate (async Monte Carlo via run_in_executor)
+    bracket.py         GET /api/bracket/svg?type=simulated|live
+    live.py            GET /api/live, GET /api/schedule
+    results.py         GET /api/results (standings, third-place race, goal stats)
+    team.py            GET /api/team/{name} (focus view data)
+
+frontend/src/
+  api/                 Typed axios wrappers + TypeScript interfaces for all endpoints
+  store/               Zustand store (injuries, manualResults, wpaHistory, oddsHistory)
+  hooks/               useLivePolling (30s), useResultsPolling (5min)
+  components/
+    shared/            FlagImage, TeamSelect, MetricCard, Sidebar
+    charts/            ProbabilityBar, ScorelineHeatmap, WinProbTimeline, ChampionshipOddsBar
+    bracket/           BracketViewer (renders SVG from backend)
+  pages/
+    MatchPredictor.tsx  Tab 1 — /
+    TournamentSimulator.tsx  Tab 2 — /simulator
+    Live.tsx            Tab 3 — /live
+    LiveTracker.tsx     Tab 4 — /tracker
+    TeamFocus.tsx       Tab 5 — /team
+
+src/                   ML pipeline — unchanged
+  data_loader.py       Download + normalize the results dataset
+  elo.py               Elo ratings over the full history
+  features.py          Feature engineering (23 features including altitude)
+  train.py             Model training, calibration, WC backtests
+  predict.py           MatchPredictor + ingame_probs()
+  external_data.py     Squad quality scores, city altitude loader
+  livefeed.py          football-data.org API client
+  tournament.py        2026 format rules, standings, bracket logic
+  simulate.py          Vectorized Monte Carlo tournament engine
+
+data/wc2026.json           Groups, bracket, team-name aliases
+data/squad_data.json       Squad quality data for all 48 WC 2026 teams
+data/city_altitude.json    Venue altitude lookup (120+ cities)
+app.py                     Original Streamlit app (kept for reference)
 ```
