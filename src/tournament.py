@@ -76,37 +76,54 @@ def split_real_results(results: pd.DataFrame, shootouts: pd.DataFrame, config: d
 
 
 def standings(teams: list[str], matches: list[tuple[str, str, int, int]]) -> list[str]:
-    """Exact group ranking with FIFA tiebreakers: points, GD, GF, then the same
-    three restricted to matches among the still-tied teams, then team name
-    (deterministic stand-in for drawing of lots)."""
+    """Group ranking per official FIFA 2026 tiebreaker order (Article 39):
+    pts → GD → GF → H2H (pts/GD/GF) → wins (all matches) → team name
+    (stand-in for fair play / FIFA ranking / drawing of lots)."""
     def table(names: set[str]) -> dict[str, tuple]:
-        """(points, GD, GF) per team, counting only matches between `names`."""
-        pts = {t: [0, 0, 0] for t in names}
+        """(pts, GD, GF, wins) per team, counting only matches between `names`."""
+        row = {t: [0, 0, 0, 0] for t in names}
         for t1, t2, s1, s2 in matches:
             if t1 not in names or t2 not in names:
                 continue
             for team, gf, ga in ((t1, s1, s2), (t2, s2, s1)):
-                pts[team][0] += 3 if gf > ga else (1 if gf == ga else 0)
-                pts[team][1] += gf - ga
-                pts[team][2] += gf
-        return {t: tuple(v) for t, v in pts.items()}
+                row[team][0] += 3 if gf > ga else (1 if gf == ga else 0)
+                row[team][1] += gf - ga
+                row[team][2] += gf
+                row[team][3] += 1 if gf > ga else 0
+        return {t: tuple(v) for t, v in row.items()}
 
     overall = table(set(teams))
+    # pts/GD/GF only — outer tied-block test; wins comes after the H2H step
+    overall3 = {t: overall[t][:3] for t in teams}
+    overall_wins = {t: overall[t][3] for t in teams}
 
-    def sort_group(group: list[str]) -> list[str]:
-        group = sorted(group, key=lambda t: overall[t], reverse=True)
-        out: list[str] = []
-        i = 0
-        while i < len(group):
-            tied = [t for t in group if overall[t] == overall[group[i]]]
-            if len(tied) > 1:
-                h2h = table(set(tied))
-                tied = sorted(tied, key=lambda t: (h2h[t], t), reverse=True)
-            out.extend(tied)
-            i += len(tied)
-        return out
+    def sort_tied(group: list[str]) -> list[str]:
+        """Apply H2H (pts/GD/GF) then overall wins to a block of teams
+        already tied on pts/GD/GF in the full group."""
+        h2h = table(set(group))
+        h2h3 = {t: h2h[t][:3] for t in group}
+        group = sorted(group, key=lambda t: h2h3[t], reverse=True)
+        # For teams still tied after H2H, apply overall wins then team name
+        out2: list[str] = []
+        j = 0
+        while j < len(group):
+            still = [t for t in group if h2h3[t] == h2h3[group[j]]]
+            if len(still) > 1:
+                still = sorted(still, key=lambda t: (overall_wins[t], t), reverse=True)
+            out2.extend(still)
+            j += len(still)
+        return out2
 
-    return sort_group(list(teams))
+    group = sorted(teams, key=lambda t: overall3[t], reverse=True)
+    out: list[str] = []
+    i = 0
+    while i < len(group):
+        tied = [t for t in group if overall3[t] == overall3[group[i]]]
+        if len(tied) > 1:
+            tied = sort_tied(tied)
+        out.extend(tied)
+        i += len(tied)
+    return out
 
 
 def parse_slot(slot: str) -> tuple[str, str]:

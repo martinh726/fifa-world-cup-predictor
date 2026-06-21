@@ -73,9 +73,10 @@ class TournamentSimulator:
 
         for gi, (letter, group_teams) in enumerate(self.config["groups"].items()):
             gidx = np.array([self.idx[t] for t in group_teams])
-            pts = np.zeros((n_sims, 4))
-            gd = np.zeros((n_sims, 4))
-            gf = np.zeros((n_sims, 4))
+            pts  = np.zeros((n_sims, 4))
+            gd   = np.zeros((n_sims, 4))
+            gf   = np.zeros((n_sims, 4))
+            wins = np.zeros((n_sims, 4))
             for la, lb in combinations(range(4), 2):
                 ta, tb = group_teams[la], group_teams[lb]
                 key = frozenset((ta, tb))
@@ -86,23 +87,35 @@ class TournamentSimulator:
                     sb = np.full(n_sims, sb)
                 else:
                     sa, sb = self._sample_scores(ta, tb)
-                pts[:, la] += np.where(sa > sb, 3, np.where(sa == sb, 1, 0))
-                pts[:, lb] += np.where(sb > sa, 3, np.where(sa == sb, 1, 0))
-                gd[:, la] += sa - sb
-                gd[:, lb] += sb - sa
-                gf[:, la] += sa
-                gf[:, lb] += sb
+                pts[:, la]  += np.where(sa > sb, 3, np.where(sa == sb, 1, 0))
+                pts[:, lb]  += np.where(sb > sa, 3, np.where(sa == sb, 1, 0))
+                gd[:, la]   += sa - sb
+                gd[:, lb]   += sb - sa
+                gf[:, la]   += sa
+                gf[:, lb]   += sb
+                wins[:, la] += (sa > sb).astype(np.float64)
+                wins[:, lb] += (sb > sa).astype(np.float64)
 
-            # composite ranking key: points > GD > GF > random (stand-in for lots/h2h)
-            key = pts * 1e9 + gd * 1e4 + gf * 10 + rng.random((n_sims, 4))
+            # Composite ranking key follows FIFA 2026 Article 39 tiebreaker order:
+            # pts → GD → GF → wins (H2H approximated by random noise for vectorised speed)
+            # Multipliers chosen so each criterion dominates all lower ones:
+            #   1 pt   = 1e9  > max |GD| contribution (~20 * 1e6 = 2e7)
+            #   1 GD   = 1e6  > max GF contribution   (~20 * 1e3 = 2e4)
+            #   1 GF   = 1e3  > max wins contribution  (3  * 10  = 30)
+            #   1 win  = 10   > random range           (0..1)
+            key = pts * 1e9 + gd * 1e6 + gf * 1e3 + wins * 10 + rng.random((n_sims, 4))
             order = np.argsort(-key, axis=1)
             winners[letter] = gidx[order[:, 0]]
             runners[letter] = gidx[order[:, 1]]
             third_local = order[:, 2]
             third_team[:, gi] = gidx[third_local]
             rows = np.arange(n_sims)
-            third_keys[:, gi] = (pts[rows, third_local] * 1e9 + gd[rows, third_local] * 1e4
-                                 + gf[rows, third_local] * 10 + rng.random(n_sims))
+            # Third-place ranking across groups also uses pts → GD → GF → wins (FIFA 2026)
+            third_keys[:, gi] = (pts[rows, third_local]  * 1e9
+                                 + gd[rows, third_local]  * 1e6
+                                 + gf[rows, third_local]  * 1e3
+                                 + wins[rows, third_local] * 10
+                                 + rng.random(n_sims))
 
             pos_counts = np.stack([np.bincount(order[:, p], minlength=4) for p in range(4)], axis=1)
             rank_probs[letter] = pd.DataFrame(
