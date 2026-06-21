@@ -76,9 +76,15 @@ def split_real_results(results: pd.DataFrame, shootouts: pd.DataFrame, config: d
 
 
 def standings(teams: list[str], matches: list[tuple[str, str, int, int]]) -> list[str]:
-    """Group ranking per official FIFA 2026 tiebreaker order (Article 39):
-    pts → GD → GF → H2H (pts/GD/GF) → wins (all matches) → team name
-    (stand-in for fair play / FIFA ranking / drawing of lots)."""
+    """Group ranking per FIFA 2026 Article 39 tiebreaker order:
+    pts → H2H pts → H2H GD → H2H GF → wins (all) → GD (all) → GF (all) → name
+
+    FIFA 2026 change: H2H comes BEFORE overall goal difference/goals scored.
+    Previous World Cups used pts → overall GD → overall GF → H2H, but
+    FIFA 2026 regulations moved H2H to step 2 (directly after pts).
+    This is the reason a team that has lost its H2H match cannot overtake
+    an equal-points rival via goal difference alone.
+    """
     def table(names: set[str]) -> dict[str, tuple]:
         """(pts, GD, GF, wins) per team, counting only matches between `names`."""
         row = {t: [0, 0, 0, 0] for t in names}
@@ -93,32 +99,37 @@ def standings(teams: list[str], matches: list[tuple[str, str, int, int]]) -> lis
         return {t: tuple(v) for t, v in row.items()}
 
     overall = table(set(teams))
-    # pts/GD/GF only — outer tied-block test; wins comes after the H2H step
-    overall3 = {t: overall[t][:3] for t in teams}
+    overall_pts  = {t: overall[t][0] for t in teams}
+    overall_gd   = {t: overall[t][1] for t in teams}
+    overall_gf   = {t: overall[t][2] for t in teams}
     overall_wins = {t: overall[t][3] for t in teams}
 
     def sort_tied(group: list[str]) -> list[str]:
-        """Apply H2H (pts/GD/GF) then overall wins to a block of teams
-        already tied on pts/GD/GF in the full group."""
+        """FIFA 2026 Article 39: for teams tied on overall pts, apply
+        H2H (pts → GD → GF) first, then wins → overall GD → overall GF → name."""
         h2h = table(set(group))
         h2h3 = {t: h2h[t][:3] for t in group}
         group = sorted(group, key=lambda t: h2h3[t], reverse=True)
-        # For teams still tied after H2H, apply overall wins then team name
         out2: list[str] = []
         j = 0
         while j < len(group):
             still = [t for t in group if h2h3[t] == h2h3[group[j]]]
             if len(still) > 1:
-                still = sorted(still, key=lambda t: (overall_wins[t], t), reverse=True)
+                # After H2H exhausted: wins → overall GD → overall GF → name (asc)
+                still = sorted(
+                    still,
+                    key=lambda t: (-overall_wins[t], -overall_gd[t], -overall_gf[t], t),
+                )
             out2.extend(still)
             j += len(still)
         return out2
 
-    group = sorted(teams, key=lambda t: overall3[t], reverse=True)
+    # Outer sort: overall pts only (NOT pts+GD+GF — H2H fires before GD in FIFA 2026)
+    group = sorted(teams, key=lambda t: overall_pts[t], reverse=True)
     out: list[str] = []
     i = 0
     while i < len(group):
-        tied = [t for t in group if overall3[t] == overall3[group[i]]]
+        tied = [t for t in group if overall_pts[t] == overall_pts[group[i]]]
         if len(tied) > 1:
             tied = sort_tied(tied)
         out.extend(tied)
@@ -170,15 +181,17 @@ if __name__ == "__main__":
     fixtures = group_fixtures(config)
     print(f"{len(fixtures)} group fixtures")
 
-    # GD tiebreak: A and B both 6 pts, A's GD is better
+    # FIFA 2026 rule: H2H fires BEFORE overall GD.
+    # A and B both 6 pts; B beat A in H2H → B ranks first despite A's better GD.
     ms = [("A", "B", 0, 1), ("C", "D", 1, 1), ("A", "C", 2, 1), ("B", "D", 2, 1),
           ("A", "D", 3, 0), ("B", "C", 1, 2)]
-    assert standings(["A", "B", "C", "D"], ms) == ["A", "B", "C", "D"]
+    assert standings(["A", "B", "C", "D"], ms) == ["B", "A", "C", "D"], standings(["A", "B", "C", "D"], ms)
 
-    # A, B, C all on 4 pts / GD 0; C first on GF, then A above B via head-to-head
+    # A, B, C all on 4 pts / GD 0; 3-way H2H is circular (all tied), then C wins on
+    # H2H GF (5 vs 3), then A above B on name (all other criteria equal).
     ms = [("A", "B", 1, 0), ("A", "C", 2, 3), ("B", "C", 3, 2),
           ("A", "D", 1, 1), ("B", "D", 1, 1), ("C", "D", 0, 0)]
-    assert standings(["A", "B", "C", "D"], ms) == ["C", "A", "B", "D"]
+    assert standings(["A", "B", "C", "D"], ms) == ["C", "A", "B", "D"], standings(["A", "B", "C", "D"], ms)
     print("standings tiebreaker tests passed")
 
     slot_opts = tuple((m["match"], parse_slot(m["slot2"])[1])

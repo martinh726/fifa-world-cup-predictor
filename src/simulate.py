@@ -96,9 +96,11 @@ class TournamentSimulator:
                 wins[:, la] += (sa > sb).astype(np.float64)
                 wins[:, lb] += (sb > sa).astype(np.float64)
 
-            # Composite ranking key follows FIFA 2026 Article 39 tiebreaker order:
-            # pts → GD → GF → wins (H2H approximated by random noise for vectorised speed)
-            # Multipliers chosen so each criterion dominates all lower ones:
+            # Composite ranking key — vectorised speed approximation of FIFA 2026 Article 39.
+            # Exact order: pts → H2H → wins → GD → GF. Computing per-sim H2H lookup
+            # across N sims is prohibitively expensive, so GD/GF proxy H2H here;
+            # random noise stands in for the final drawing-of-lots step.
+            # Multipliers ensure each criterion dominates all lower ones:
             #   1 pt   = 1e9  > max |GD| contribution (~20 * 1e6 = 2e7)
             #   1 GD   = 1e6  > max GF contribution   (~20 * 1e3 = 2e4)
             #   1 GF   = 1e3  > max wins contribution  (3  * 10  = 30)
