@@ -1,7 +1,7 @@
 """Shared utility functions for the backend routers."""
 from __future__ import annotations
 
-from itertools import combinations
+from itertools import combinations, product as _iprod
 
 import numpy as np
 import pandas as pd
@@ -33,42 +33,56 @@ def merge_api_finished(group_results: list, ko_results: list,
     return new_group, new_ko
 
 
+def _group_all_outcomes(teams: list, matches: list):
+    """Yield one possible final group ranking per remaining-game scenario.
+
+    Uses 1-0 / 1-1 / 0-1 as canonical scores — correct for pts and wins;
+    GD/GF are approximate but conservative for elimination decisions.
+    Each yielded value is the result of FIFA 2026 standings() on that outcome.
+    """
+    from src.tournament import standings as _fifa_standings
+    rem = remaining_matches(teams, matches)
+    for outcomes in _iprod(range(3), repeat=len(rem)):
+        sim = list(matches)
+        for (t1, t2), o in zip(rem, outcomes):
+            sim.append((t1, t2, 1, 0) if o == 0 else
+                       (t1, t2, 1, 1) if o == 1 else
+                       (t1, t2, 0, 1))
+        yield _fifa_standings(teams, sim)
+
+
 def group_qual_status(teams: list, matches: list) -> dict[str, str]:
     """Return 'through' | 'contention' | 'eliminated' per team.
 
-    2026 WC rule: top 2 per group qualify automatically; the 8 best third-place
-    teams across all 12 groups also advance.  A team is only truly 'eliminated'
-    when they are mathematically guaranteed 4th place (cannot even be the group's
-    third-place representative).  Being locked into 3rd is NOT elimination — the
-    team is still competing for one of the 8 best-third slots.
+    Enumerates all possible outcomes of remaining group games and applies the
+    full FIFA 2026 tiebreaker chain (pts → GD → GF → H2H pts/GD/GF → wins)
+    to determine the mathematically exact status:
+
+    - 'through'    = guaranteed top-2 in EVERY possible outcome
+    - 'eliminated' = guaranteed 4th in EVERY possible outcome
+                     (cannot even reach 3rd → truly out of the tournament)
+    - 'contention' = can reach top-2 in SOME outcomes, OR can be 3rd
+                     (keeps the best-third R32 route open)
+
+    2026 WC note: being locked into 3rd is NOT elimination — that team still
+    competes for one of the 8 best-third slots across all 12 groups.
     """
-    pts = {t: 0 for t in teams}
-    played = {t: 0 for t in teams}
-    for t1, t2, s1, s2 in matches:
-        for t, gf, ga in ((t1, s1, s2), (t2, s2, s1)):
-            if t in pts:
-                played[t] += 1
-                pts[t] += 3 if gf > ga else (1 if gf == ga else 0)
-    if not any(v > 0 for v in played.values()):
+    if not matches:
         return {t: "contention" for t in teams}
-    max_pts = {t: pts[t] + 3 * (3 - played[t]) for t in teams}
+
+    all_rankings = list(_group_all_outcomes(teams, matches))
+
     status = {}
     for t in teams:
-        # Teams whose current points already exceed t's theoretical maximum
-        guaranteed_above = sum(1 for o in teams if o != t and pts[o] > max_pts[t])
-        # Teams that could still end above t in any possible remaining scenario
-        possibly_above   = sum(1 for o in teams if o != t and max_pts[o] > pts[t])
-        if guaranteed_above >= 3:
-            # 3 teams definitely finish above → t is guaranteed last (4th)
-            # → cannot be the group's 3rd-place representative → truly eliminated
+        ranks = [r.index(t) for r in all_rankings]  # 0-indexed: 0=1st … 3=4th
+        best, worst = min(ranks), max(ranks)
+        if best >= 3:     # can't avoid 4th in any scenario → truly eliminated
             status[t] = "eliminated"
-        elif possibly_above < 2:
-            # Even in the worst case ≤1 team can pass t → guaranteed top 2
+        elif worst <= 1:  # always 1st or 2nd in every scenario → guaranteed through
             status[t] = "through"
         else:
-            # Could finish anywhere from 1st to 3rd (or even 4th)
-            # 3rd-place finish still keeps best-third route open
             status[t] = "contention"
+
     return status
 
 
@@ -113,18 +127,23 @@ def qual_scenario(teams: list, matches: list) -> dict[str, dict]:
     qual = group_qual_status(teams, matches)
     rem_fix = remaining_matches(teams, matches)
 
+    # H2H-aware: can each team actually reach top 2 in any scenario?
+    if matches:
+        _all_rank = list(_group_all_outcomes(teams, matches))
+        _can_top2 = {t: any(r.index(t) < 2 for r in _all_rank) for t in teams}
+    else:
+        _can_top2 = {t: True for t in teams}
+
     result = {}
     for t in teams:
         s = stats[t]
         rem = 3 - s["played"]
         mp = max_pts[t]
-        can_reach_2nd = mp >= pts_2nd
         status = qual.get(t, "contention")
         next_opp = [b if a == t else a for a, b in rem_fix if t in (a, b)]
 
-        # Number of teams mathematically guaranteed to finish above t
-        guaranteed_above = sum(1 for o in teams if o != t and stats[o]["pts"] > mp)
-        locked_out_of_top2 = guaranteed_above >= 2  # definitely 3rd or 4th
+        can_reach_2nd = _can_top2.get(t, True)
+        locked_out_of_top2 = not can_reach_2nd  # H2H-aware lock-out
 
         g = "game" if rem == 1 else "games"
 
@@ -134,7 +153,10 @@ def qual_scenario(teams: list, matches: list) -> dict[str, dict]:
             msg = "Eliminated — mathematically 4th place"
         elif locked_out_of_top2:
             # Locked into 3rd — still alive via best-third route
-            msg = f"3rd place — in best-third race ({s['pts']} pts, {rem} {g} left)"
+            if rem == 0:
+                msg = f"3rd place — in best-third race ({s['pts']} pts, group complete)"
+            else:
+                msg = f"3rd place — in best-third race ({s['pts']} pts, {rem} {g} left)"
         else:
             rank = s["rank"]
             if rank <= 2:
@@ -196,6 +218,20 @@ def third_place_race(config: dict, all_played: list) -> list[dict]:
     # pts → GD → GF → wins → team name (stand-in for fair play / FIFA rank)
     thirds.sort(key=lambda x: (-x["pts"], -x["gd"], -x["gf"], -x["wins"], x["team"]))
     return thirds
+
+
+def is_best_third_eliminated(max_pts: int, group_letter: str, thirds: list[dict]) -> bool:
+    """Return True if a team with max_pts cannot crack the top-8 best-third slots.
+
+    Uses the conservative (never false-positive) criterion: if 8 or more OTHER
+    groups already have a current 3rd-place team whose pts strictly exceed max_pts,
+    those thirds are guaranteed to rank above this team since pts can only increase.
+    """
+    guaranteed_better = sum(
+        1 for t in thirds
+        if t["group"] != group_letter and t["pts"] > max_pts
+    )
+    return guaranteed_better >= 8
 
 
 def compute_goal_stats(all_played: list) -> dict:

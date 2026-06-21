@@ -148,6 +148,7 @@ export interface StandingTeam {
   status: 'through' | 'contention' | 'eliminated'
   message: string
   next_opponents: string[]
+  can_reach_2nd: boolean
   rank: number
 }
 

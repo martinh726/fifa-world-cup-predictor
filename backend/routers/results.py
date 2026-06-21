@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends
 
 from backend.cache import results_cache
 from backend.deps import AppState, get_state
-from backend.utils import (compute_goal_stats, merge_api_finished,
-                            qual_scenario, third_place_race)
+from backend.utils import (compute_goal_stats, is_best_third_eliminated,
+                            merge_api_finished, qual_scenario, third_place_race)
 from src.livefeed import fetch_finished_matches, get_api_key
 from src.tournament import standings
 
@@ -48,6 +48,7 @@ def _build_standings_data(config: dict, all_played: list) -> dict:
                     "status": scenarios[t]["status"],
                     "message": scenarios[t]["message"],
                     "next_opponents": scenarios[t]["next_opponents"],
+                    "can_reach_2nd": scenarios[t]["can_reach_2nd"],
                     "rank": order.index(t) + 1,
                 }
                 for t in order
@@ -55,6 +56,34 @@ def _build_standings_data(config: dict, all_played: list) -> dict:
             "remaining_fixtures": [{"team1": a, "team2": b} for a, b in rem],
         }
     return result
+
+
+def _apply_best_third_elimination(standings_data: dict, thirds: list) -> None:
+    """Post-processing: upgrade 'contention' to 'eliminated' for teams locked in
+    3rd whose maximum possible pts cannot crack the top-8 best-third slots.
+
+    A team is locked in 3rd when can_reach_2nd is False.  They are eliminated
+    from the best-third race when 8+ other groups' current 3rd-place teams
+    already have strictly more pts than this team can ever achieve — those
+    thirds can only improve, so they're guaranteed to rank higher.
+    """
+    for letter, gdata in standings_data.items():
+        for td in gdata["teams"]:
+            if td["status"] != "contention":
+                continue
+            if td.get("can_reach_2nd", True):
+                continue  # still fighting for top 2 — don't touch
+            max_pts = td["pts"] + 3 * (3 - td["played"])
+            if is_best_third_eliminated(max_pts, letter, thirds):
+                better = sum(
+                    1 for t in thirds
+                    if t["group"] != letter and t["pts"] > max_pts
+                )
+                td["status"] = "eliminated"
+                td["message"] = (
+                    f"Eliminated — max {max_pts} pts can't reach top-8 thirds "
+                    f"({better}/11 other groups' thirds already have more pts)"
+                )
 
 
 @router.get("/results")
@@ -78,6 +107,7 @@ def get_results(state: AppState = Depends(get_state)):
 
     standings_data = _build_standings_data(state.config, all_played)
     thirds = third_place_race(state.config, all_played)
+    _apply_best_third_elimination(standings_data, thirds)
     goal_stats = compute_goal_stats(all_played)
 
     # Format played matches for the frontend table
