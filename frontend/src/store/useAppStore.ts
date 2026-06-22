@@ -67,10 +67,17 @@ export const useAppStore = create<AppStore>()(
       appendWpaPoint: (key, point) =>
         set(s => {
           const prev = s.wpaHistory[key] ?? []
+          // Upsert by minute: update the existing entry for this minute rather
+          // than appending — prevents chart lines collapsing during half-time
+          // when the minute counter stays at 45 across many polling cycles.
+          const idx = prev.findIndex(p => p.minute === point.minute)
+          const updated = idx >= 0
+            ? [...prev.slice(0, idx), point, ...prev.slice(idx + 1)]
+            : [...prev, point]
           return {
             wpaHistory: {
               ...s.wpaHistory,
-              [key]: [...prev, point].slice(-200),
+              [key]: updated.slice(-180),
             },
           }
         }),

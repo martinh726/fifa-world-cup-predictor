@@ -96,8 +96,8 @@ export function Live() {
                   </div>
                 )}
 
-                {/* WPA timeline */}
-                {history.length >= 2 && (
+                {/* WPA timeline — shows from 1st poll onward */}
+                {history.length >= 1 && (
                   <WinProbTimeline points={history} home={m.home} away={m.away} />
                 )}
 
