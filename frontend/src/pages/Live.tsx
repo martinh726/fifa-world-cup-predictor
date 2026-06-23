@@ -67,6 +67,17 @@ export function Live() {
             const isPens = m.status === 'PENALTY_SHOOTOUT'
             const minLabel = isHT ? 'HT' : isPens ? 'Pens' : m.minute_estimated ? `~${m.minute}'` : `${m.minute}'`
 
+            // Upset alert: underdog's win probability has jumped ≥22pp vs prematch
+            let upsetAlert: string | null = null
+            if (m.live_probs && m.prematch) {
+              const homeShift = m.live_probs.p_home - m.prematch.p_home
+              const awayShift = m.live_probs.p_away - m.prematch.p_away
+              if (homeShift >= 0.22 && m.prematch.p_home < m.prematch.p_away)
+                upsetAlert = `${m.home} overturning (+${(homeShift * 100).toFixed(0)}pp vs prematch)`
+              else if (awayShift >= 0.22 && m.prematch.p_away < m.prematch.p_home)
+                upsetAlert = `${m.away} overturning (+${(awayShift * 100).toFixed(0)}pp vs prematch)`
+            }
+
             return (
               <div key={key} className="bg-slate-800 rounded-xl p-5 space-y-4">
                 {/* Score row */}
@@ -86,6 +97,12 @@ export function Live() {
                     <FlagImage code={flags[m.away]} size={28} alt={m.away} />
                   </div>
                 </div>
+
+                {upsetAlert && (
+                  <div className="bg-amber-500/20 border border-amber-500/40 rounded-lg px-3 py-2 text-center">
+                    <span className="text-amber-300 font-semibold text-sm">⚡ UPSET IN PROGRESS — {upsetAlert}</span>
+                  </div>
+                )}
 
                 {/* Live probabilities */}
                 {m.live_probs && (

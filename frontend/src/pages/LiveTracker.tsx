@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useResultsPolling } from '../hooks/useResultsPolling'
 import { useAppStore } from '../store/useAppStore'
@@ -8,9 +8,6 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchTeams, fetchSchedule } from '../api'
 import type { ThirdPlaceTeam } from '../api/types'
 import { formatLocalKickoff } from '../utils/time'
-
-const STATUS_ICON = { through: '✅', eliminated: '❌', contention: '' } as Record<string, string>
-const STATUS_COLOR = { through: '#22c55e', eliminated: '#ef4444', contention: '#f59e0b' } as Record<string, string>
 
 function statusLabel(t: { status: string; message: string }) {
   if (t.status === 'through') return { icon: '✅', color: '#22c55e' }
@@ -32,7 +29,6 @@ export function LiveTracker() {
   const { data: scheduleData } = useQuery({
     queryKey: ['schedule'],
     queryFn: () => fetchSchedule(30),
-    enabled: showSchedule,
     staleTime: 600_000,
   })
   const queryClient = useQueryClient()
@@ -49,6 +45,26 @@ export function LiveTracker() {
   const [mS2, setMS2] = useState(0)
 
   const age = dataUpdatedAt ? Math.floor((Date.now() - dataUpdatedAt) / 1000) : null
+
+  const snapshot = useMemo(() => {
+    if (!results) return null
+    let through = 0, eliminated = 0, contention = 0
+    for (const g of Object.values(results.standings)) {
+      for (const t of g.teams) {
+        if (t.status === 'through') through++
+        else if (t.status === 'eliminated') eliminated++
+        else contention++
+      }
+    }
+    return { through, eliminated, contention, groupGames: results.group_results.length }
+  }, [results])
+
+  const nextMatches = useMemo(() => {
+    if (!scheduleData?.matches) return []
+    return scheduleData.matches
+      .filter(m => !['FINISHED', 'IN_PLAY', 'HALFTIME', 'PAUSED', 'EXTRA_TIME', 'PENALTY_SHOOTOUT'].includes(m.status))
+      .slice(0, 5)
+  }, [scheduleData])
 
   return (
     <div className="space-y-5">
@@ -73,6 +89,60 @@ export function LiveTracker() {
       </div>
 
       {isLoading && !results && <div className="text-slate-400 text-sm">Loading results…</div>}
+
+      {/* Snapshot stats — visible as soon as any matches have been played */}
+      {snapshot && (snapshot.through > 0 || snapshot.eliminated > 0) && (
+        <div className="flex gap-3 flex-wrap">
+          <div className="bg-green-900/30 border border-green-700/40 rounded-lg px-4 py-2 text-center">
+            <div className="text-xs text-green-400">Qualified</div>
+            <div className="text-2xl font-bold text-green-300">{snapshot.through}</div>
+          </div>
+          <div className="bg-red-900/30 border border-red-700/40 rounded-lg px-4 py-2 text-center">
+            <div className="text-xs text-red-400">Eliminated</div>
+            <div className="text-2xl font-bold text-red-300">{snapshot.eliminated}</div>
+          </div>
+          <div className="bg-amber-900/30 border border-amber-700/40 rounded-lg px-4 py-2 text-center">
+            <div className="text-xs text-amber-400">In contention</div>
+            <div className="text-2xl font-bold text-amber-300">{snapshot.contention}</div>
+          </div>
+          <div className="bg-slate-800 rounded-lg px-4 py-2 text-center">
+            <div className="text-xs text-slate-400">Group games</div>
+            <div className="text-2xl font-bold text-slate-300">
+              {snapshot.groupGames}<span className="text-sm font-normal text-slate-500">/72</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Next 5 upcoming matches — always visible, loaded independently */}
+      {nextMatches.length > 0 && (
+        <div className="bg-slate-800 rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-slate-300 mb-3">Next up</h3>
+          <div className="space-y-2">
+            {nextMatches.map((m, i) => (
+              <div key={i} className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm">
+                  <FlagImage code={flags[m.home]} size={18} alt={m.home} />
+                  <span className="text-white font-medium">{m.home}</span>
+                  <span className="text-slate-500 text-xs">vs</span>
+                  <FlagImage code={flags[m.away]} size={18} alt={m.away} />
+                  <span className="text-white font-medium">{m.away}</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs">
+                  {m.prediction && (
+                    <span>
+                      <span className="text-blue-400 font-medium">{(m.prediction.p_home * 100).toFixed(0)}%</span>
+                      <span className="text-slate-500"> · {(m.prediction.p_draw * 100).toFixed(0)}% · </span>
+                      <span className="text-red-400 font-medium">{(m.prediction.p_away * 100).toFixed(0)}%</span>
+                    </span>
+                  )}
+                  <span className="text-slate-500">{formatLocalKickoff(m.utc_date)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {results && (
         <>
@@ -332,50 +402,52 @@ export function LiveTracker() {
 
 function ThirdPlaceTable({ thirds, flags }: { thirds: ThirdPlaceTeam[]; flags: Record<string, string> }) {
   if (!thirds.length) return <div className="mt-2 text-slate-400 text-sm p-3">No groups have started yet.</div>
-  const top8 = thirds.slice(0, 8)
-  const rest = thirds.slice(8)
   return (
-    <div className="mt-2 bg-slate-800 rounded-xl p-4 space-y-3">
-      <p className="text-xs text-slate-400">Top 8 third-place finishers advance to R32. FIFA 2026 ranking: Pts → GD → GF → Wins.</p>
-      <ThirdTable rows={top8} flags={flags} label="Currently qualifying (top 8)" />
-      {rest.length > 0 && <ThirdTable rows={rest} flags={flags} label="Below the cutoff" />}
-    </div>
-  )
-}
-
-function ThirdTable({ rows, flags, label }: { rows: ThirdPlaceTeam[]; flags: Record<string, string>; label: string }) {
-  return (
-    <div>
-      <div className="text-xs font-semibold text-slate-300 mb-1">{label}</div>
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-slate-400 border-b border-slate-700">
-            <th className="text-left py-0.5">Grp</th>
-            <th className="text-left py-0.5">Team</th>
-            <th className="text-right py-0.5 px-1">P</th>
-            <th className="text-right py-0.5 px-1">W</th>
-            <th className="text-right py-0.5 px-1">Pts</th>
-            <th className="text-right py-0.5 px-1">GD</th>
-            <th className="text-right py-0.5 px-1">GF</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(r => (
-            <tr key={r.team} className="border-b border-slate-700/30">
-              <td className="py-0.5 text-slate-500">{r.group}</td>
-              <td className="py-0.5">
-                <FlagImage code={flags[r.team]} size={12} />{' '}{r.team}
-                {!r.group_done && <span className="text-slate-500 ml-1">({r.remaining} left)</span>}
-              </td>
-              <td className="text-right py-0.5 px-1 text-slate-400">{r.played}</td>
-              <td className="text-right py-0.5 px-1 text-slate-300">{r.wins ?? 0}</td>
-              <td className="text-right py-0.5 px-1 font-bold text-white">{r.pts}</td>
-              <td className="text-right py-0.5 px-1 text-slate-300">{r.gd > 0 ? '+' : ''}{r.gd}</td>
-              <td className="text-right py-0.5 px-1 text-slate-300">{r.gf}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="mt-2 bg-slate-800 rounded-xl p-4">
+      <p className="text-xs text-slate-400 mb-3">
+        Top 8 advance to R32 · FIFA 2026: Pts → GD → GF · Lighter bar = max pts with remaining games
+      </p>
+      <div className="space-y-1.5">
+        {thirds.map((r, idx) => {
+          const isTop8 = idx < 8
+          const maxPts = r.pts + 3 * r.remaining
+          const barPct = (r.pts / 9) * 100
+          const maxPct = Math.min((maxPts / 9) * 100, 100)
+          return (
+            <Fragment key={r.team}>
+              {idx === 8 && (
+                <div className="flex items-center gap-2 my-2">
+                  <div className="flex-1 border-t border-dashed border-red-500/50" />
+                  <span className="text-xs text-red-400 whitespace-nowrap px-1">cutoff — top 8 advance</span>
+                  <div className="flex-1 border-t border-dashed border-red-500/50" />
+                </div>
+              )}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-600 w-5 text-right shrink-0">{idx + 1}</span>
+                <span className="text-slate-500 w-4 shrink-0">{r.group}</span>
+                <div className="flex items-center gap-1 w-28 shrink-0">
+                  <FlagImage code={flags[r.team]} size={12} />
+                  <span className={`truncate ${isTop8 ? 'text-white font-medium' : 'text-slate-400'}`}>{r.team}</span>
+                </div>
+                <div className="flex-1 relative h-4 bg-slate-700 rounded overflow-hidden">
+                  {!r.group_done && maxPct > barPct && (
+                    <div className="absolute inset-y-0 left-0 bg-slate-500/40 rounded" style={{ width: `${maxPct}%` }} />
+                  )}
+                  <div
+                    className="absolute inset-y-0 left-0 rounded"
+                    style={{ width: `${barPct}%`, backgroundColor: isTop8 ? '#22c55e' : '#6b7280' }}
+                  />
+                </div>
+                <span className={`font-bold w-6 text-right shrink-0 ${isTop8 ? 'text-white' : 'text-slate-500'}`}>{r.pts}pt</span>
+                <span className="text-slate-500 w-10 text-right shrink-0">{r.gd > 0 ? '+' : ''}{r.gd} GD</span>
+                {!r.group_done && (
+                  <span className="text-slate-600 w-8 text-right shrink-0 hidden sm:inline">+{r.remaining * 3}?</span>
+                )}
+              </div>
+            </Fragment>
+          )
+        })}
+      </div>
     </div>
   )
 }
