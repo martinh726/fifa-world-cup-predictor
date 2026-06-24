@@ -41,7 +41,8 @@ def _long_format(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _add_rolling(long: pd.DataFrame, shifted: bool) -> pd.DataFrame:
-    """Rolling form per team. shifted=True excludes the current match (training);
+    """Rolling form per team using EWMA (exponential recency decay, span=window).
+    shifted=True excludes the current match (training);
     shifted=False includes it (snapshot of form *after* the latest matches)."""
     g = long.groupby("team", sort=False)
 
@@ -49,9 +50,8 @@ def _add_rolling(long: pd.DataFrame, shifted: bool) -> pd.DataFrame:
                               ("gf", 10, "gf10"), ("ga", 10, "ga10"), ("points", 10, "ppg10"),
                               ("points", 25, "ppg25")]:
         src = g[col].shift(1) if shifted else long[col]
-        long[name] = (
-            src.groupby(long["team"]).rolling(window, min_periods=1).mean()
-            .reset_index(level=0, drop=True)
+        long[name] = src.groupby(long["team"]).transform(
+            lambda x, w=window: x.ewm(span=w, min_periods=1).mean()
         )
     long["rest"] = g["date"].diff().dt.days.clip(upper=MAX_REST_DAYS).fillna(MAX_REST_DAYS)
     return long
@@ -92,19 +92,29 @@ def build_match_features(df: pd.DataFrame, min_year: int = 1990,
     outcome (0=home win, 1=draw, 2=away win), home_score, away_score, date, teams.
     city_altitude: optional {city: metres} lookup; if None, altitude_m is 0 for all rows.
     """
-    long = _add_rolling(_long_format(df), shifted=True)
-    home_side = long[long["is_home"]].set_index("midx")
-    away_side = long[~long["is_home"]].set_index("midx")
+    # Rolling form from competitive matches only — pre-tournament friendly results
+    # (where starters are rested and tactics are experimental) pollute the form signal.
+    comp = df[df["tournament"] != "Friendly"]
+    comp_long = _add_rolling(_long_format(comp), shifted=True)
+    home_comp = comp_long[comp_long["is_home"]].set_index("midx")
+    away_comp = comp_long[~comp_long["is_home"]].set_index("midx")
+
+    # Rest days from ALL matches — friendlies still consume legs and travel time.
+    long_full = _long_format(df)
+    g_full = long_full.groupby("team", sort=False)
+    long_full["rest"] = g_full["date"].diff().dt.days.clip(upper=MAX_REST_DAYS).fillna(MAX_REST_DAYS)
+    home_full = long_full[long_full["is_home"]].set_index("midx")
+    away_full = long_full[~long_full["is_home"]].set_index("midx")
 
     feat = pd.DataFrame(index=df.index)
     feat["elo_home"] = df["home_elo_pre"]
     feat["elo_away"] = df["away_elo_pre"]
     feat["elo_diff"] = df["home_elo_pre"] - df["away_elo_pre"]
     for c in _ROLL_COLS:
-        feat[f"{c}_home"] = home_side[c]
-        feat[f"{c}_away"] = away_side[c]
-    feat["rest_home"] = home_side["rest"]
-    feat["rest_away"] = away_side["rest"]
+        feat[f"{c}_home"] = home_comp[c]  # NaN for friendly rows — imputed downstream
+        feat[f"{c}_away"] = away_comp[c]
+    feat["rest_home"] = home_full["rest"]
+    feat["rest_away"] = away_full["rest"]
     feat[["h2h_ppg_home", "h2h_ppg_away", "h2h_n"]] = _h2h(df)
     feat["importance"] = df["tournament"].map(lambda t: IMPORTANCE[k_factor(t)])
     feat["neutral"] = df["neutral"].astype(int)
@@ -143,8 +153,9 @@ def swap_orientation(feats: pd.DataFrame) -> pd.DataFrame:
 
 
 def latest_team_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """Current form snapshot per team (rolling stats *including* their latest match)."""
-    long = _add_rolling(_long_format(df), shifted=False)
+    """Current form snapshot per team using competitive matches only."""
+    comp = df[df["tournament"] != "Friendly"]
+    long = _add_rolling(_long_format(comp), shifted=False)
     last = long.groupby("team").tail(1).set_index("team")
     return last[_ROLL_COLS + ["date"]]
 

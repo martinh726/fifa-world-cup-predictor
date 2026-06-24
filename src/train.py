@@ -59,6 +59,12 @@ def make_elo_baseline() -> Pipeline:
     ])
 
 
+def recency_weights(dates: pd.Series, half_life_years: float = 3.0) -> np.ndarray:
+    """Exponential decay: a match `half_life_years` old gets 50% the weight of today's match."""
+    days_old = (dates.max() - dates).dt.days.to_numpy().astype(float)
+    return np.exp(-np.log(2) * days_old / (half_life_years * 365.25))
+
+
 def make_linear() -> Pipeline:
     """Regularized multinomial logistic on the full feature set — a robust,
     low-variance complement to the gradient-boosted classifier."""
@@ -100,14 +106,18 @@ def evaluate(y: np.ndarray, proba: np.ndarray) -> dict:
     }
 
 
-def fit_models(train: pd.DataFrame) -> dict:
+def fit_models(train: pd.DataFrame, sample_weight: np.ndarray | None = None) -> dict:
     X = train[FEATURES]
+    sw = sample_weight
+    lin_kw  = {"lr__sample_weight": sw}      if sw is not None else {}
+    poi_kw  = {"poisson__sample_weight": sw} if sw is not None else {}
+    elo_kw  = {"lr__sample_weight": sw}      if sw is not None else {}
     return {
-        "clf": make_classifier().fit(X, train["outcome"]),
-        "lin": make_linear().fit(X, train["outcome"]),
-        "pois_home": make_poisson().fit(X, train["home_score"].clip(upper=MAX_GOALS)),
-        "pois_away": make_poisson().fit(X, train["away_score"].clip(upper=MAX_GOALS)),
-        "elo_base": make_elo_baseline().fit(train[ELO_COLS], train["outcome"]),
+        "clf":       make_classifier().fit(X, train["outcome"], sample_weight=sw),
+        "lin":       make_linear().fit(X, train["outcome"], **lin_kw),
+        "pois_home": make_poisson().fit(X, train["home_score"].clip(upper=MAX_GOALS), **poi_kw),
+        "pois_away": make_poisson().fit(X, train["away_score"].clip(upper=MAX_GOALS), **poi_kw),
+        "elo_base":  make_elo_baseline().fit(train[ELO_COLS], train["outcome"], **elo_kw),
     }
 
 
@@ -171,7 +181,7 @@ def backtest(feats: pd.DataFrame) -> tuple[pd.DataFrame, tuple[float, ...]]:
         cutoff = pd.Timestamp(year, 6, 1)
         train = feats[feats["date"] < cutoff]
         test = feats[(feats["tournament"] == "FIFA World Cup") & (feats["date"].dt.year == year)]
-        models = fit_models(train)
+        models = fit_models(train, sample_weight=recency_weights(train["date"]))
         per_year[year] = (test["outcome"].to_numpy(), predict_components(models, test))
         if year != 2022:
             val = feats[(feats["date"] >= cutoff) &
@@ -215,7 +225,7 @@ def write_report(report: pd.DataFrame, w: tuple[float, float, float]) -> None:
 
 
 def train_final(feats: pd.DataFrame, w: tuple[float, float, float]) -> dict:
-    models = fit_models(feats)
+    models = fit_models(feats, sample_weight=recency_weights(feats["date"]))
     artifacts = {**models, "blend_w": w, "features": FEATURES,
                  "trained_through": str(feats["date"].max().date())}
     MODELS_DIR.mkdir(exist_ok=True)
