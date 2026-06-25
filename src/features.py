@@ -15,7 +15,9 @@ MAX_REST_DAYS = 60.0
 FEATURES = [
     "elo_home", "elo_away", "elo_diff",
     "gf5_home", "ga5_home", "ppg5_home", "gf10_home", "ga10_home", "ppg10_home", "ppg25_home",
+    "avgGD5_home", "avgGD10_home",
     "gf5_away", "ga5_away", "ppg5_away", "gf10_away", "ga10_away", "ppg10_away", "ppg25_away",
+    "avgGD5_away", "avgGD10_away",
     "rest_home", "rest_away",
     "h2h_ppg_home", "h2h_n",
     "importance", "neutral",
@@ -24,7 +26,7 @@ FEATURES = [
     "wc_ppg_home", "wc_ppg_away", "wc_gd_home", "wc_gd_away",
 ]
 
-_ROLL_COLS = ["gf5", "ga5", "ppg5", "gf10", "ga10", "ppg10", "ppg25"]
+_ROLL_COLS = ["gf5", "ga5", "ppg5", "gf10", "ga10", "ppg10", "ppg25", "avgGD5", "avgGD10"]
 
 
 def _long_format(df: pd.DataFrame) -> pd.DataFrame:
@@ -39,6 +41,7 @@ def _long_format(df: pd.DataFrame) -> pd.DataFrame:
     })
     long = pd.concat([home, away], ignore_index=True)
     long["points"] = np.select([long.gf > long.ga, long.gf == long.ga], [3.0, 1.0], 0.0)
+    long["gd"] = long["gf"] - long["ga"]
     return long.sort_values(["team", "date", "midx"]).reset_index(drop=True)
 
 
@@ -50,7 +53,8 @@ def _add_rolling(long: pd.DataFrame, shifted: bool) -> pd.DataFrame:
 
     for col, window, name in [("gf", 5, "gf5"), ("ga", 5, "ga5"), ("points", 5, "ppg5"),
                               ("gf", 10, "gf10"), ("ga", 10, "ga10"), ("points", 10, "ppg10"),
-                              ("points", 25, "ppg25")]:
+                              ("points", 25, "ppg25"),
+                              ("gd", 5, "avgGD5"), ("gd", 10, "avgGD10")]:
         src = g[col].shift(1) if shifted else long[col]
         long[name] = src.groupby(long["team"]).transform(
             lambda x, w=window: x.ewm(span=w, min_periods=1).mean()
@@ -98,7 +102,6 @@ def _wc_form(df: pd.DataFrame) -> pd.DataFrame:
                             columns=["wc_ppg_home", "wc_ppg_away", "wc_gd_home", "wc_gd_away"],
                             dtype=float)
     long = _long_format(wc)
-    long["gd"] = long["gf"] - long["ga"]
     long["wc_year"] = long["date"].dt.year
 
     g = long.groupby(["team", "wc_year"], sort=False)
@@ -132,7 +135,6 @@ def current_wc_stats(df: pd.DataFrame) -> dict[str, tuple[float, float]]:
         return {}
     latest_year = int(wc["date"].dt.year.max())
     long = _long_format(wc[wc["date"].dt.year == latest_year])
-    long["gd"] = long["gf"] - long["ga"]
     return {
         team: (float(grp["points"].mean()), float(grp["gd"].mean()))
         for team, grp in long.groupby("team")
