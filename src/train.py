@@ -239,6 +239,7 @@ def main():
     results_elo, _ = compute_elo(results)
     city_alt = load_city_altitude()
     feats = build_match_features(results_elo, city_altitude=city_alt)
+    feats = feats[feats["tournament"] != "Friendly"].copy()
     print(f"Training table: {len(feats):,} matches ({feats['date'].min().date()} .. {feats['date'].max().date()})")
 
     print("Backtesting on World Cups 2014/2018/2022...")
