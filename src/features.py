@@ -20,6 +20,8 @@ FEATURES = [
     "h2h_ppg_home", "h2h_n",
     "importance", "neutral",
     "altitude_m",
+    # Cumulative form within the current World Cup (NaN for non-WC matches → imputed)
+    "wc_ppg_home", "wc_ppg_away", "wc_gd_home", "wc_gd_away",
 ]
 
 _ROLL_COLS = ["gf5", "ga5", "ppg5", "gf10", "ga10", "ppg10", "ppg25"]
@@ -84,6 +86,59 @@ def _h2h(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _wc_form(df: pd.DataFrame) -> pd.DataFrame:
+    """Cumulative PPG and avg GD accumulated within each World Cup before each match.
+
+    For the first match of a team's WC campaign the feature is NaN (no prior data).
+    Non-WC rows are NaN and handled by the imputer downstream.
+    """
+    wc = df[df["tournament"] == "FIFA World Cup"].copy()
+    if wc.empty:
+        return pd.DataFrame(index=df.index,
+                            columns=["wc_ppg_home", "wc_ppg_away", "wc_gd_home", "wc_gd_away"],
+                            dtype=float)
+    long = _long_format(wc)
+    long["gd"] = long["gf"] - long["ga"]
+    long["wc_year"] = long["date"].dt.year
+
+    g = long.groupby(["team", "wc_year"], sort=False)
+    # Cumulative totals before each match (shift by 1 so current match excluded)
+    long["cum_pts"] = g["points"].transform(lambda s: s.shift(1).cumsum())
+    long["cum_gd"]  = g["gd"].transform(lambda s: s.shift(1).cumsum())
+    long["n"]       = g.cumcount()  # number of WC matches played before this one
+
+    long["wc_ppg"] = np.where(long["n"] > 0, long["cum_pts"] / long["n"], np.nan)
+    long["wc_gd"]  = np.where(long["n"] > 0, long["cum_gd"]  / long["n"], np.nan)
+
+    home_wc = long[long["is_home"]].set_index("midx")[["wc_ppg", "wc_gd"]]
+    away_wc = long[~long["is_home"]].set_index("midx")[["wc_ppg", "wc_gd"]]
+
+    out = pd.DataFrame(index=df.index)
+    out["wc_ppg_home"] = home_wc["wc_ppg"]
+    out["wc_ppg_away"] = away_wc["wc_ppg"]
+    out["wc_gd_home"]  = home_wc["wc_gd"]
+    out["wc_gd_away"]  = away_wc["wc_gd"]
+    return out
+
+
+def current_wc_stats(df: pd.DataFrame) -> dict[str, tuple[float, float]]:
+    """PPG and avg GD for every team in the most recent World Cup (all games played).
+
+    Used at prediction time to inject live tournament form into make_future_row.
+    Returns {team: (wc_ppg, wc_gd_avg)}.
+    """
+    wc = df[df["tournament"] == "FIFA World Cup"]
+    if wc.empty:
+        return {}
+    latest_year = int(wc["date"].dt.year.max())
+    long = _long_format(wc[wc["date"].dt.year == latest_year])
+    long["gd"] = long["gf"] - long["ga"]
+    return {
+        team: (float(grp["points"].mean()), float(grp["gd"].mean()))
+        for team, grp in long.groupby("team")
+    }
+
+
 def build_match_features(df: pd.DataFrame, min_year: int = 1990,
                           city_altitude: dict | None = None) -> pd.DataFrame:
     """Build the training table from results that already carry pre-match Elo columns.
@@ -116,6 +171,7 @@ def build_match_features(df: pd.DataFrame, min_year: int = 1990,
     feat["rest_home"] = home_full["rest"]
     feat["rest_away"] = away_full["rest"]
     feat[["h2h_ppg_home", "h2h_ppg_away", "h2h_n"]] = _h2h(df)
+    feat[["wc_ppg_home", "wc_ppg_away", "wc_gd_home", "wc_gd_away"]] = _wc_form(df)
     feat["importance"] = df["tournament"].map(lambda t: IMPORTANCE[k_factor(t)])
     feat["neutral"] = df["neutral"].astype(int)
     if city_altitude and "city" in df.columns:
@@ -142,7 +198,10 @@ def swap_orientation(feats: pd.DataFrame) -> pd.DataFrame:
     orientations and average, so the arbitrary 'home' label carries no signal.
     """
     out = feats.copy()
-    swaps = {"elo_home": "elo_away", "rest_home": "rest_away", "h2h_ppg_home": "h2h_ppg_away"}
+    swaps = {
+        "elo_home": "elo_away", "rest_home": "rest_away", "h2h_ppg_home": "h2h_ppg_away",
+        "wc_ppg_home": "wc_ppg_away", "wc_gd_home": "wc_gd_away",
+    }
     swaps.update({f"{c}_home": f"{c}_away" for c in _ROLL_COLS})
     rename = {}
     for a, b in swaps.items():
@@ -175,10 +234,12 @@ def h2h_lookup(df: pd.DataFrame, team_a: str, team_b: str) -> tuple[float, float
 
 def make_future_row(home: str, away: str, stats: pd.DataFrame, ratings: dict[str, float],
                     h2h: tuple[float, float], neutral: bool, as_of: pd.Timestamp,
-                    importance: int = 4, altitude: float = 0.0) -> dict:
+                    importance: int = 4, altitude: float = 0.0,
+                    wc_stats: dict | None = None) -> dict:
     """Single feature row for a hypothetical future match.
 
     altitude: metres above sea level for the match venue (0 = sea level / unknown).
+    wc_stats: {team: (wc_ppg, wc_gd_avg)} from current_wc_stats(); None outside WC context.
     """
     row: dict = {
         "elo_home": ratings.get(home, 1500.0),
@@ -200,4 +261,7 @@ def make_future_row(home: str, away: str, stats: pd.DataFrame, ratings: dict[str
             for c in _ROLL_COLS:
                 row[f"{c}_{side}"] = np.nan
             row[f"rest_{side}"] = MAX_REST_DAYS
+        wc = (wc_stats or {}).get(team)
+        row[f"wc_ppg_{side}"] = wc[0] if wc else np.nan
+        row[f"wc_gd_{side}"]  = wc[1] if wc else np.nan
     return row

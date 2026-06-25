@@ -12,7 +12,7 @@ from src.elo import compute_elo
 from src.external_data import (apply_squad_adjustment, load_city_altitude,
                                 load_squad_data, squad_metrics, squad_quality_score,
                                 _build_norms)
-from src.features import FEATURES, h2h_lookup, latest_team_stats, make_future_row
+from src.features import FEATURES, h2h_lookup, latest_team_stats, make_future_row, current_wc_stats
 from src.train import ELO_COLS, MAX_GOALS, score_matrices, wdl_from_matrices
 
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
@@ -48,6 +48,7 @@ class MatchPredictor:
         self.results = results if results is not None else load_results(download=download)
         _, self.ratings = compute_elo(self.results)
         self.stats = latest_team_stats(self.results)
+        self.wc_stats = current_wc_stats(self.results)
         self.as_of = self.results["date"].max() + pd.Timedelta(days=1)
 
         self.city_altitude = load_city_altitude()
@@ -62,7 +63,7 @@ class MatchPredictor:
         rows = [
             make_future_row(h, a, self.stats, self.ratings,
                             h2h_lookup(self.results, h, a), neutral, self.as_of,
-                            altitude=alt)
+                            altitude=alt, wc_stats=self.wc_stats)
             for h, a, neutral, alt in fixtures
         ]
         return pd.DataFrame(rows)[FEATURES]
