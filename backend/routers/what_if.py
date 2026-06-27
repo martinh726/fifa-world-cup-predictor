@@ -4,9 +4,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from backend.cache import results_cache
 from backend.deps import AppState, get_state
 from backend.routers.results import _apply_best_third_elimination, _build_standings_data
-from backend.utils import third_place_race
+from backend.utils import merge_api_finished, third_place_race
+from src.livefeed import fetch_finished_matches, get_api_key
 
 router = APIRouter()
 
@@ -37,12 +39,32 @@ def _resolve_slot(
 def what_if(req: WhatIfRequest, state: AppState = Depends(get_state)):
     """Return updated standings, third-place race, and R32 projections for hypothetical group results.
 
-    Played matches (in state.group_results) are locked and cannot be overridden.
-    Only hypothetical results for unplayed pairs are accepted.
+    Uses the same live-merged results as /api/results (reuses cache when warm) so the
+    base data matches what the Tracker shows.  Played matches are locked and cannot be
+    overridden; hypothetical results are only accepted for genuinely unplayed pairs.
     """
-    played_pairs = {frozenset((t1, t2)) for t1, t2, *_ in state.group_results}
+    # Reuse the cached results' group list if it's still fresh (avoids an extra API call).
+    cached = results_cache.get()
+    if cached is not None:
+        real_group_results = [
+            (r["team1"], r["team2"], r["score1"], r["score2"])
+            for r in cached["group_results"]
+        ]
+    else:
+        api_key = get_api_key()
+        api_finished: list = []
+        if api_key:
+            try:
+                api_finished = fetch_finished_matches(api_key)
+            except Exception:
+                pass
+        real_group_results, _ = merge_api_finished(
+            state.group_results, state.ko_results, api_finished, state.config
+        )
 
-    merged = list(state.group_results)
+    played_pairs = {frozenset((t1, t2)) for t1, t2, *_ in real_group_results}
+
+    merged = list(real_group_results)
     for h in req.hypothetical:
         if frozenset((h.team1, h.team2)) not in played_pairs:
             merged.append((h.team1, h.team2, h.score1, h.score2))
