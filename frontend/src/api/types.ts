@@ -196,6 +196,24 @@ export interface ScheduleMatch {
   prediction?: LiveProbs | null
 }
 
+export interface WhatIfRequest {
+  hypothetical: { team1: string; team2: string; score1: number; score2: number }[]
+}
+
+export interface R32Projection {
+  match: number
+  team1: string | null
+  note1: string
+  team2: string | null
+  note2: string
+}
+
+export interface WhatIfResponse {
+  standings: Record<string, GroupStanding>
+  third_place_race: ThirdPlaceTeam[]
+  r32_projections: R32Projection[]
+}
+
 export interface TeamResponse {
   team: string
   group: string

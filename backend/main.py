@@ -14,7 +14,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from backend import deps
 from backend.routers import bracket, live, predict, results, teams, team
-from backend.routers import simulate
+from backend.routers import simulate, what_if
 
 
 @asynccontextmanager
@@ -47,6 +47,7 @@ app.include_router(simulate.router, prefix="/api")
 app.include_router(live.router,     prefix="/api")
 app.include_router(bracket.router,  prefix="/api")
 app.include_router(team.router,     prefix="/api")
+app.include_router(what_if.router,  prefix="/api")
 
 # Serve built React frontend in production (when frontend/dist exists)
 _dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

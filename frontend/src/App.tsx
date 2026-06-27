@@ -5,6 +5,7 @@ import { TournamentSimulator } from './pages/TournamentSimulator'
 import { Live } from './pages/Live'
 import { LiveTracker } from './pages/LiveTracker'
 import { TeamFocus } from './pages/TeamFocus'
+import { ScenarioBuilder } from './pages/ScenarioBuilder'
 
 const NAV = [
   { to: '/', label: '🎯 Predictor', end: true },
@@ -12,6 +13,7 @@ const NAV = [
   { to: '/live', label: '📡 Live' },
   { to: '/tracker', label: '📊 Tracker' },
   { to: '/team', label: '🏳️ Team Focus' },
+  { to: '/scenarios', label: '🔮 Scenarios' },
 ]
 
 export default function App() {
@@ -48,6 +50,7 @@ export default function App() {
             <Route path="/live" element={<Live />} />
             <Route path="/tracker" element={<LiveTracker />} />
             <Route path="/team" element={<TeamFocus />} />
+            <Route path="/scenarios" element={<ScenarioBuilder />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

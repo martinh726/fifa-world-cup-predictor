@@ -2,6 +2,7 @@ import { api } from './client'
 import type {
   LiveResponse, PredictResponse, ResultsResponse,
   ScheduleMatch, SimulateRequest, SimulateResponse, TeamResponse, TeamsResponse,
+  WhatIfRequest, WhatIfResponse,
 } from './types'
 
 export const fetchTeams = (): Promise<TeamsResponse> =>
@@ -41,5 +42,8 @@ export const fetchBacktestReport = (): Promise<{ content: string | null }> =>
 
 export const triggerRefresh = (): Promise<{ status: string; data_through: string }> =>
   api.post('/refresh').then(r => r.data)
+
+export const fetchWhatIf = (req: WhatIfRequest): Promise<WhatIfResponse> =>
+  api.post('/what-if', req).then(r => r.data)
 
 export * from './types'
