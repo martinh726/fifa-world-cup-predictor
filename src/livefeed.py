@@ -25,6 +25,7 @@ _EXTRA_ALIASES: dict[str, str] = {
     "Korea Republic": "South Korea",
     "USA": "United States",
     "Cabo Verde": "Cape Verde",
+    "Cape Verde Islands": "Cape Verde",
     "Congo DR": "DR Congo",
     "Türkiye": "Turkey",
     "Czechia": "Czech Republic",
