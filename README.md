@@ -8,6 +8,8 @@ Predicts individual match outcomes (win/draw/loss probabilities + scorelines) an
 
 Full-stack application: **FastAPI** backend exposing the ML/simulation engine as a JSON API, **React + Vite** frontend with real-time polling.
 
+> **Live tournament**: actively tracking WC 2026. The model retrains on completed matches as they come in; blend weights are auto-selected and never manually tuned.
+
 ## Quick start
 
 ### Backend (terminal 1)
@@ -84,6 +86,14 @@ Follow a single team throughout the tournament:
 - Predicted bracket path — shows likely opponents and win probabilities at each stage
 - Next match card with kick-off time and pre-match win probability
 
+### Scenario Builder
+
+Explore "what if" outcomes for unplayed group matches without touching completed results:
+
+- Per-group fixture cards: played matches shown with real scores and a lock icon; remaining matches have `+` / `−` score pickers
+- Hit **Calculate** to see updated group standings (affected groups highlighted), the revised third-place race with bar chart and cutoff line, and projected R32 matchups where group positions are already resolved
+- Base data always pulled from the same live-merged feed as the Tracker — scenarios layer on top of real results, never replace them
+
 ## Setup
 
 ### Prerequisites
@@ -139,10 +149,12 @@ This refreshes `models/` and updates `reports/backtest.md`.
 
 ## How it works
 
-- **Data**: [martj42's international results dataset](https://github.com/martj42/international_results) — every men's full international since 1872 (~49,000 matches).
+- **Data**: [martj42's international results dataset](https://github.com/martj42/international_results) — every men's full international since 1872 (~49,000 matches), plus completed WC 2026 matches synced live.
 - **Ratings**: Elo computed over the full history (eloratings.net methodology: importance-weighted K-factor, goal-margin multiplier, home advantage).
-- **Features (23 total)**: Elo levels/difference, rolling form (goals + points over last 5/10/25 matches), head-to-head record, match importance, venue neutrality, days of rest, **venue altitude**.
-- **Models**: Ensemble of four components — gradient-boosted classifier (calibrated), regularized multinomial logistic, Poisson goal models (scorelines), Elo-only logistic. Blend weights chosen on neutral-venue tournament matches; 2022 World Cup is an untouched holdout (see `reports/backtest.md`).
+- **Features (29 total)**: Elo levels/difference · EWMA rolling form over last 5/10/25 competitive matches (goals for/against, points, goal difference) · in-tournament WC form (cumulative PPG and avg GD within the current WC before each match) · head-to-head record · match importance · venue neutrality · days of rest · venue altitude.
+- **Form calculation**: Rolling stats use exponential weighted moving averages (EWMA, `span=window`) so the most recent matches carry more weight than older ones. Computed on **competitive matches only** (friendlies excluded) — pre-tournament rotations pollute the signal. Rest days still use all matches since even friendlies consume travel and legs.
+- **Models**: Ensemble of four components — gradient-boosted classifier (calibrated), regularized multinomial logistic, Poisson goal models (scorelines), Elo-only logistic. Blend weights chosen via grid search on neutral-venue tournament matches post-2014/2018, then shrunk halfway toward uniform as a regulariser; 2022 World Cup is an untouched holdout (see `reports/backtest.md`).
+- **Recency-weighted training**: Exponential decay with a 3-year half-life is applied as `sample_weight` during model fitting, so recent matches matter more than decade-old results.
 - **Squad adjustment**: Post-prediction logit adjustment using a composite quality score — squad market value (35%), FIFA ranking (25%), top-5 league player share (20%), average caps (10%), coach win rate (10%). Applied after the model blend; strength is adjustable via sidebar slider.
 - **In-game probability**: At minute `m` with score `(g_h, g_a)`, remaining lambdas are scaled by `(90 - m) / 90` and the full Poisson joint PMF is summed over all additional-goal combinations.
 - **Symmetry**: Neutral-venue forecasts average both home/away orientations.
@@ -155,7 +167,7 @@ backend/
   main.py              FastAPI app, lifespan startup, CORS, static file serving
   deps.py              AppState singleton (predictor, results, last sim result)
   cache.py             TTLCache — live (30s), results (300s), schedule (600s)
-  bracket_svg.py       Pure-Python SVG bracket renderer (extracted from app.py)
+  bracket_svg.py       Pure-Python SVG bracket renderer
   utils.py             Standings, qual scenarios, goal stats, accuracy helpers
   routers/
     teams.py           GET /api/teams, POST /api/refresh, GET /api/backtest-report
@@ -165,6 +177,7 @@ backend/
     live.py            GET /api/live, GET /api/schedule
     results.py         GET /api/results (standings, third-place race, goal stats)
     team.py            GET /api/team/{name} (focus view data)
+    what_if.py         POST /api/what-if (scenario builder — hypothetical group results)
 
 frontend/src/
   api/                 Typed axios wrappers + TypeScript interfaces for all endpoints
@@ -175,25 +188,29 @@ frontend/src/
     charts/            ProbabilityBar, ScorelineHeatmap, WinProbTimeline, ChampionshipOddsBar
     bracket/           BracketViewer (renders SVG from backend)
   pages/
-    MatchPredictor.tsx  Tab 1 — /
-    TournamentSimulator.tsx  Tab 2 — /simulator
-    Live.tsx            Tab 3 — /live
-    LiveTracker.tsx     Tab 4 — /tracker
-    TeamFocus.tsx       Tab 5 — /team
+    MatchPredictor.tsx      Tab 1 — /
+    TournamentSimulator.tsx Tab 2 — /simulator
+    Live.tsx                Tab 3 — /live
+    LiveTracker.tsx         Tab 4 — /tracker
+    TeamFocus.tsx           Tab 5 — /team
+    ScenarioBuilder.tsx     Tab 6 — /scenarios
 
-src/                   ML pipeline — unchanged
+src/                   ML pipeline
   data_loader.py       Download + normalize the results dataset
   elo.py               Elo ratings over the full history
-  features.py          Feature engineering (23 features including altitude)
-  train.py             Model training, calibration, WC backtests
+  features.py          Feature engineering (29 features) — EWMA form, WC in-tournament
+                       form, goal margin features, competitive-only rolling stats
+  train.py             Model training with recency-weighted sample weights, blend grid
+                       search, WC backtests (2014/2018/2022 holdout)
   predict.py           MatchPredictor + ingame_probs()
   external_data.py     Squad quality scores, city altitude loader
   livefeed.py          football-data.org API client
   tournament.py        2026 format rules, standings, bracket logic
   simulate.py          Vectorized Monte Carlo tournament engine
 
-data/wc2026.json           Groups, bracket, team-name aliases
+data/wc2026.json           Groups, bracket, R32 slot definitions, team-name aliases
 data/squad_data.json       Squad quality data for all 48 WC 2026 teams
 data/city_altitude.json    Venue altitude lookup (120+ cities)
+reports/backtest.md        Auto-generated model accuracy report (updated on retrain)
 app.py                     Original Streamlit app (kept for reference)
 ```
