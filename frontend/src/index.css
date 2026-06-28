@@ -1,14 +1,61 @@
 @import "tailwindcss";
 
+@theme {
+  /* ── Deep navy base — WC stadium night atmosphere ─────────────────────── */
+  --color-slate-950: #04050b;
+  --color-slate-900: #07090f;
+  --color-slate-800: #0c1120;
+  --color-slate-700: #172034;
+  --color-slate-600: #25334e;
+  --color-slate-500: #3f5068;
+  --color-slate-400: #6a8098;
+  --color-slate-300: #9db2c8;
+  --color-slate-200: #c4d2e2;
+  --color-slate-100: #e2eaf4;
+
+  /* ── WC 2026 official accent palette ──────────────────────────────────── */
+  --color-wc-red:    #c8102e;
+  --color-wc-blue:   #003da5;
+  --color-wc-gold:   #f0a500;
+  --color-wc-cyan:   #00b4d8;
+  --color-wc-purple: #6b21a8;
+  --color-wc-lime:   #65a30d;
+  --color-wc-orange: #ea580c;
+}
+
 :root {
   color-scheme: dark;
 }
 
+/* WC 2026 rainbow stripe — runs across the very top of the viewport */
+html::before {
+  content: '';
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    #c8102e  0%,
+    #ea580c 14%,
+    #f0a500 28%,
+    #65a30d 42%,
+    #00b4d8 57%,
+    #003da5 71%,
+    #6b21a8 85%,
+    #c8102e 100%
+  );
+  z-index: 9999;
+}
+
 body {
-  background-color: #0f172a;
-  color: #e2e8f0;
+  background-color: #07090f;
+  color: #e2eaf4;
   font-family: system-ui, -apple-system, sans-serif;
   margin: 0;
+  padding-top: 3px;
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
 }
@@ -22,7 +69,8 @@ body {
   background: transparent !important;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #1e293b; }
-::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+/* WC 2026 red scrollbar */
+::-webkit-scrollbar         { width: 5px; height: 5px; }
+::-webkit-scrollbar-track   { background: #0c1120; }
+::-webkit-scrollbar-thumb   { background: #c8102e; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #e0182e; }
