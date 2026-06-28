@@ -22,19 +22,30 @@ export default function App() {
       <Sidebar />
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Tab nav */}
-        <nav className="flex gap-0.5 px-4 pt-3 pb-0 bg-slate-900 border-b border-slate-700/60 flex-shrink-0">
+        {/* Tab nav — deep blue with gold active state */}
+        <nav
+          className="flex gap-0.5 px-4 pt-3 pb-0 border-b flex-shrink-0"
+          style={{
+            backgroundColor: '#09142a',
+            borderColor: 'rgba(201,162,39,0.2)',
+          }}
+        >
           {NAV.map(({ to, label, end }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
               className={({ isActive }) =>
-                `px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+                `px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
                   isActive
-                    ? 'border-[#c8102e] text-white bg-slate-800/80'
-                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                    ? 'text-white'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-700/40'
                 }`
+              }
+              style={({ isActive }) =>
+                isActive
+                  ? { borderColor: '#c9a227', backgroundColor: 'rgba(201,162,39,0.08)' }
+                  : {}
               }
             >
               {label}
