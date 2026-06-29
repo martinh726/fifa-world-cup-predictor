@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.bracket_svg import build_live_bracket
 from backend.deps import AppState, get_state
 from backend.utils import compute_accuracy, merge_api_finished
 from src.livefeed import fetch_finished_matches, get_api_key
@@ -86,6 +87,20 @@ def _run_sync(req: SimulateRequest, state: AppState) -> dict[str, Any]:
         k: {**v, "win_prob": round(float(v["win_prob"]), 4) if v.get("win_prob") is not None else None}
         for k, v in result["bracket"].items()
     }
+
+    # Overlay confirmed live KO results so they show actual=True (✓) instead of probabilities
+    if req.lock_real_results and live_ko:
+        live_bracket = build_live_bracket(live_group, live_ko, state.config)
+        for m_num, live_match in live_bracket.items():
+            if live_match.get("actual") and m_num in bracket:
+                bracket[m_num] = {
+                    **bracket[m_num],
+                    "team1": live_match["team1"],
+                    "team2": live_match["team2"],
+                    "winner": live_match["winner"],
+                    "win_prob": None,
+                    "actual": True,
+                }
 
     # Accuracy on all live completed matches (not just the CSV subset)
     all_group = locked_group if locked_group else live_group
