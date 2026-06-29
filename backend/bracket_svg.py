@@ -149,7 +149,8 @@ def render_bracket_svg(bracket: dict, flags: dict) -> str:
 
 def build_live_bracket(group_results_all: list, ko_results_all: list, config: dict) -> dict:
     """Build bracket data from actual group standings and knockout results."""
-    from src.tournament import standings, parse_slot
+    from src.tournament import standings, parse_slot, assign_third_slots
+    from backend.utils import third_place_race
 
     group_of = {t: g for g, ts in config["groups"].items() for t in ts}
     stage_map = (
@@ -172,10 +173,31 @@ def build_live_bracket(group_results_all: list, ko_results_all: list, config: di
         if ms:
             group_order[letter] = standings(teams, ms)
 
+    # Resolve third-place bracket slots using the real top-8 thirds.
+    # slot_options: tuple of (match_number, allowed_group_letters) for every R32 "3:" slot.
+    slot_options = tuple(
+        (
+            m["match"],
+            tuple(m["slot2"][2:] if m["slot2"].startswith("3:") else m["slot1"][2:]),
+        )
+        for m in config["round_of_32"]
+        if m["slot1"].startswith("3:") or m["slot2"].startswith("3:")
+    )
+    thirds = third_place_race(config, group_results_all)
+    third_slot_map: dict[int, str] = {}
+    if len(thirds) >= 8:
+        top8_groups = frozenset(t["group"] for t in thirds[:8])
+        group_assignment = assign_third_slots(top8_groups, slot_options)
+        group_to_team = {t["group"]: t["team"] for t in thirds}
+        for match_num, grp in group_assignment.items():
+            team = group_to_team.get(grp)
+            if team:
+                third_slot_map[match_num] = team
+
     ko_won = {frozenset((t1, t2)): w for t1, t2, w in ko_results_all}
     match_to_winner: dict[int, str] = {}
 
-    def resolve(slot: str) -> str:
+    def resolve(slot: str, match_num: int = 0) -> str:
         if slot.startswith("1"):
             g = slot[1:]
             order = group_order.get(g, [])
@@ -191,7 +213,7 @@ def build_live_bracket(group_results_all: list, ko_results_all: list, config: di
                 return order[1] if done else order[1] + "*"
             return f"2nd Gp {g}"
         if slot.startswith("3:"):
-            return "Best 3rd"
+            return third_slot_map.get(match_num, "Best 3rd")
         if slot.startswith("W"):
             m = int(slot[1:])
             return match_to_winner.get(m, f"W{m}")
@@ -202,7 +224,7 @@ def build_live_bracket(group_results_all: list, ko_results_all: list, config: di
               config["quarterfinals"] + config["semifinals"] + [config["final"]])
     for match in all_ko:
         m = match["match"]
-        t1, t2 = resolve(match["slot1"]), resolve(match["slot2"])
+        t1, t2 = resolve(match["slot1"], m), resolve(match["slot2"], m)
         winner = ko_won.get(frozenset((t1.rstrip("*"), t2.rstrip("*"))))
         if winner:
             match_to_winner[m] = winner
