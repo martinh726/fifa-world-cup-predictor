@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.deps import AppState, get_state
-from backend.utils import compute_accuracy
+from backend.utils import compute_accuracy, merge_api_finished
+from src.livefeed import fetch_finished_matches, get_api_key
 
 router = APIRouter()
 
@@ -40,14 +41,26 @@ def _run_sync(req: SimulateRequest, state: AppState) -> dict[str, Any]:
 
     sim = TournamentSimulator(predictor, state.config, n_sims=req.n_sims)
 
+    # Merge live API results with the CSV baseline — same pattern as /api/results
+    api_key = get_api_key()
+    api_finished: list = []
+    if api_key:
+        try:
+            api_finished = fetch_finished_matches(api_key)
+        except Exception:
+            pass
+    live_group, live_ko = merge_api_finished(
+        state.group_results, state.ko_results, api_finished, state.config
+    )
+
     locked_group: list = []
     if req.lock_real_results:
-        locked_group = list(state.group_results)
+        locked_group = list(live_group)
     locked_group += [(r.team1, r.team2, r.score1, r.score2) for r in req.manual_results]
 
     ko_winners: list = []
     if req.lock_real_results:
-        ko_winners = list(state.ko_results)
+        ko_winners = list(live_ko)
 
     result = sim.run(locked_group=locked_group, ko_winners=ko_winners)
 
@@ -74,9 +87,9 @@ def _run_sync(req: SimulateRequest, state: AppState) -> dict[str, Any]:
         for k, v in result["bracket"].items()
     }
 
-    # Accuracy on completed matches
-    all_group = locked_group or state.group_results
-    accuracy = compute_accuracy(predictor, all_group, state.ko_results if req.lock_real_results else [])
+    # Accuracy on all live completed matches (not just the CSV subset)
+    all_group = locked_group if locked_group else live_group
+    accuracy = compute_accuracy(predictor, all_group, live_ko if req.lock_real_results else [])
 
     return {
         "n_sims": result["n_sims"],
