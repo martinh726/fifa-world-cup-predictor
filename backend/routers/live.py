@@ -7,8 +7,9 @@ from fastapi import APIRouter, Depends, Query
 
 from backend.cache import live_cache, schedule_cache
 from backend.deps import AppState, get_state
-from src.livefeed import (fetch_live_matches, fetch_scheduled_matches,
-                          fetch_todays_matches, get_api_key)
+from src.livefeed import (fetch_apifootball_live, fetch_apifootball_stats,
+                          fetch_live_matches, fetch_scheduled_matches,
+                          fetch_todays_matches, get_api_key, get_apifootball_key)
 from src.predict import ingame_probs
 
 router = APIRouter()
@@ -31,6 +32,15 @@ def get_live(state: AppState = Depends(get_state)):
         return cached
 
     live_matches, err = fetch_live_matches(api_key)
+
+    # Fetch exact minutes + fixture IDs from API-Football (optional second key)
+    af_key = get_apifootball_key()
+    af_live: dict = {}
+    if af_key:
+        try:
+            af_live = fetch_apifootball_live(af_key)
+        except Exception:
+            pass
 
     enriched = []
     for m in live_matches:
@@ -58,7 +68,17 @@ def get_live(state: AppState = Depends(get_state)):
                 }
             except Exception:
                 pass
-        enriched.append({**m, "prematch": prematch, "live_probs": live_prob})
+
+        # Fetch live stats from API-Football when available (120 s per-fixture cache)
+        match_stats = None
+        af_match = af_live.get(f"{home_t}v{away_t}")
+        if af_key and af_match and af_match.get("fixture_id"):
+            try:
+                match_stats = fetch_apifootball_stats(af_key, af_match["fixture_id"])
+            except Exception:
+                pass
+
+        enriched.append({**m, "prematch": prematch, "live_probs": live_prob, "match_stats": match_stats})
 
     todays_upcoming: list = []
     if not live_matches:
