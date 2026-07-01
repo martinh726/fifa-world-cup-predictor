@@ -1,8 +1,8 @@
 import { api } from './client'
 import type {
-  LiveResponse, PredictResponse, ResultsResponse,
+  CalibrationResponse, LiveResponse, PredictResponse, ResultsResponse,
   ScheduleMatch, SimulateRequest, SimulateResponse, TeamResponse, TeamsResponse,
-  WhatIfRequest, WhatIfResponse,
+  TiebreakerResponse, WhatIfRequest, WhatIfResponse,
 } from './types'
 
 export const fetchTeams = (): Promise<TeamsResponse> =>
@@ -45,5 +45,11 @@ export const triggerRefresh = (): Promise<{ status: string; data_through: string
 
 export const fetchWhatIf = (req: WhatIfRequest): Promise<WhatIfResponse> =>
   api.post('/what-if', req).then(r => r.data)
+
+export const fetchTiebreaker = (): Promise<TiebreakerResponse> =>
+  api.get('/tiebreaker').then(r => r.data)
+
+export const fetchCalibration = (): Promise<CalibrationResponse> =>
+  api.get('/calibration').then(r => r.data)
 
 export * from './types'

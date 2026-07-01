@@ -193,7 +193,60 @@ export interface ScheduleMatch {
   utc_date: string
   status: string
   minute: number
+  stage?: string
+  matchday?: number | null
+  group?: string
   prediction?: LiveProbs | null
+}
+
+export interface TiebreakerRow {
+  team: string
+  rank: number
+  pts: number
+  gd: number
+  gf: number
+  wins: number
+  played: number
+}
+
+export interface TiebreakerFixture {
+  team1: string
+  team2: string
+  scenarios: {
+    home_win: TiebreakerRow[]
+    draw: TiebreakerRow[]
+    away_win: TiebreakerRow[]
+  }
+}
+
+export interface TiebreakerGroup {
+  current_standings: TiebreakerRow[]
+  fixtures: TiebreakerFixture[]
+  games_played: number
+  games_remaining: number
+  tied_pairs: string[][]
+}
+
+export interface TiebreakerResponse {
+  groups: Record<string, TiebreakerGroup>
+  active_groups: Record<string, TiebreakerGroup>
+  all_done: boolean
+}
+
+export interface CalibrationBin {
+  predicted: number[]
+  actual: number[]
+  counts: number[]
+}
+
+export interface CalibrationResponse {
+  n_matches: number
+  calibration: Record<string, CalibrationBin>
+  brier: Record<string, number>
+  confidence_distribution: {
+    bin_centers: number[]
+    counts: number[]
+  }
 }
 
 export interface WhatIfRequest {

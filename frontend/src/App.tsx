@@ -6,6 +6,8 @@ import { Live } from './pages/Live'
 import { LiveTracker } from './pages/LiveTracker'
 import { TeamFocus } from './pages/TeamFocus'
 import { ScenarioBuilder } from './pages/ScenarioBuilder'
+import { Schedule } from './pages/Schedule'
+import { Tiebreaker } from './pages/Tiebreaker'
 
 const NAV = [
   { to: '/', label: '🎯 Predictor', end: true },
@@ -14,6 +16,8 @@ const NAV = [
   { to: '/tracker', label: '📊 Tracker' },
   { to: '/team', label: '🏳️ Team Focus' },
   { to: '/scenarios', label: '🔮 Scenarios' },
+  { to: '/schedule', label: '📅 Schedule' },
+  { to: '/tiebreaker', label: '⚖ Tiebreaker' },
 ]
 
 export default function App() {
@@ -24,10 +28,11 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Tab nav — deep blue with gold active state */}
         <nav
-          className="flex gap-0.5 px-4 pt-3 pb-0 border-b flex-shrink-0"
+          className="flex gap-0.5 px-4 pt-3 pb-0 border-b flex-shrink-0 overflow-x-auto"
           style={{
             backgroundColor: '#09142a',
             borderColor: 'rgba(201,162,39,0.2)',
+            scrollbarWidth: 'none',
           }}
         >
           {NAV.map(({ to, label, end }) => (
@@ -62,6 +67,8 @@ export default function App() {
             <Route path="/tracker" element={<LiveTracker />} />
             <Route path="/team" element={<TeamFocus />} />
             <Route path="/scenarios" element={<ScenarioBuilder />} />
+            <Route path="/schedule" element={<Schedule />} />
+            <Route path="/tiebreaker" element={<Tiebreaker />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

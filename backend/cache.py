@@ -27,3 +27,4 @@ class TTLCache:
 live_cache = TTLCache(30)
 results_cache = TTLCache(300)
 schedule_cache = TTLCache(600)
+calibration_cache = TTLCache(300)

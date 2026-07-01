@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useQueryClient } from '@tanstack/react-query'
-import { fetchSimulate } from '../api'
+import { fetchSimulate, fetchCalibration } from '../api'
+import type { CalibrationResponse } from '../api/types'
 import { useAppStore } from '../store/useAppStore'
 import { ChampionshipOddsBar } from '../components/charts/ChampionshipOddsBar'
 import { BracketViewer } from '../components/bracket/BracketViewer'
@@ -14,6 +15,14 @@ export function TournamentSimulator() {
   const [nSims, setNSims] = useState(10000)
   const [lockRealResults, setLockRealResults] = useState(true)
   const [selectedGroup, setSelectedGroup] = useState('A')
+  const [showCalibration, setShowCalibration] = useState(false)
+
+  const { data: calibData } = useQuery({
+    queryKey: ['calibration'],
+    queryFn: fetchCalibration,
+    staleTime: 300_000,
+    enabled: showCalibration,
+  })
 
   const { manualResults, squadStrength, lastSimResult, oddsHistory,
     setLastSimResult, appendOddsHistory, clearOddsHistory, clearManualResults } = useAppStore()
@@ -257,6 +266,120 @@ export function TournamentSimulator() {
           )}
         </>
       )}
+
+      {/* Model calibration — always visible, loads on demand */}
+      <div className="bg-slate-800 rounded-xl p-4">
+        <button
+          onClick={() => setShowCalibration(v => !v)}
+          className="w-full flex items-center justify-between text-sm font-semibold text-slate-300"
+        >
+          <span>📐 Model calibration (reliability diagram)</span>
+          <span className="text-slate-500 text-xs">{showCalibration ? '▲ hide' : '▼ show'}</span>
+        </button>
+        {showCalibration && calibData && calibData.n_matches > 0 && (
+          <CalibrationSection data={calibData} />
+        )}
+        {showCalibration && calibData && calibData.n_matches === 0 && (
+          <p className="text-slate-500 text-sm mt-3">No completed matches to compute calibration from.</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CalibrationSection({ data }: { data: CalibrationResponse }) {
+  const COLORS: Record<string, string> = {
+    'Home Win': '#003087',
+    'Draw': '#94a3b8',
+    'Away Win': '#c41230',
+  }
+
+  const calibTraces = Object.entries(data.calibration).map(([label, bins]) => ({
+    type: 'scatter' as const,
+    mode: 'lines+markers' as const,
+    name: label,
+    x: bins.predicted,
+    y: bins.actual,
+    marker: { color: COLORS[label] ?? '#5878a8', size: 7 },
+    line: { color: COLORS[label] ?? '#5878a8', width: 2 },
+    hovertemplate: `<b>${label}</b><br>Predicted: %{x:.1%}<br>Actual: %{y:.1%}<br>n=%{text}<extra></extra>`,
+    text: bins.counts.map(String),
+  }))
+
+  const diagTrace = {
+    type: 'scatter' as const,
+    mode: 'lines' as const,
+    name: 'Perfect calibration',
+    x: [0, 1],
+    y: [0, 1],
+    line: { color: '#c9a227', width: 1.5, dash: 'dash' as const },
+    hoverinfo: 'skip' as const,
+  }
+
+  const confTrace = {
+    type: 'bar' as const,
+    name: 'Match count',
+    x: data.confidence_distribution.bin_centers,
+    y: data.confidence_distribution.counts,
+    marker: { color: 'rgba(91,143,212,0.4)', line: { color: 'rgba(91,143,212,0.8)', width: 1 } },
+    hovertemplate: 'Confidence: %{x:.0%}<br>Matches: %{y}<extra></extra>',
+    yaxis: 'y2',
+    showlegend: false,
+  }
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="grid grid-cols-3 gap-3">
+        {Object.entries(data.brier).map(([label, score]) => (
+          <div key={label} className="bg-slate-700 rounded-lg p-3">
+            <div className="text-xs text-slate-400">{label} Brier</div>
+            <div className="text-lg font-bold" style={{ color: COLORS[label] ?? '#fff' }}>
+              {score.toFixed(3)}
+            </div>
+            <div className="text-[10px] text-slate-500">lower = better</div>
+          </div>
+        ))}
+      </div>
+
+      <Plot
+        data={[diagTrace, ...calibTraces, confTrace as any]}
+        layout={{
+          height: 320,
+          paper_bgcolor: 'transparent',
+          plot_bgcolor: 'transparent',
+          font: { color: '#e2e8f0', size: 11 },
+          margin: { l: 50, r: 50, t: 20, b: 50 },
+          xaxis: {
+            title: { text: 'Predicted probability', font: { size: 11 } },
+            range: [0, 1],
+            tickformat: '.0%',
+            color: '#94a3b8',
+            gridcolor: '#1e293b',
+          },
+          yaxis: {
+            title: { text: 'Actual frequency', font: { size: 11 } },
+            range: [0, 1],
+            tickformat: '.0%',
+            color: '#94a3b8',
+            gridcolor: '#1e293b',
+          },
+          yaxis2: {
+            overlaying: 'y',
+            side: 'right',
+            title: { text: 'Match count', font: { size: 10 } },
+            color: '#475569',
+            showgrid: false,
+          },
+          legend: { orientation: 'h', y: -0.22, font: { size: 10 } },
+          hovermode: 'closest',
+        }}
+        config={{ displayModeBar: false, responsive: true }}
+        style={{ width: '100%' }}
+      />
+      <p className="text-[10px] text-slate-500">
+        Based on {data.n_matches} completed group-stage matches. Points above the dashed line = model
+        under-confident; below = over-confident. Bars show how often the model assigns each confidence level.
+      </p>
     </div>
   )
 }

@@ -111,6 +111,9 @@ def _parse_match(m: dict, aliases: dict[str, str]) -> dict:
         "minute_estimated": api_minute is None,
         "status": status,
         "utc_date": m.get("utcDate", ""),
+        "stage": m.get("stage", ""),
+        "matchday": m.get("matchday"),
+        "group": m.get("group", "") or "",
     }
 
 
