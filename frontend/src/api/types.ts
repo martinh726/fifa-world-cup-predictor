@@ -116,6 +116,25 @@ export interface LiveProbs {
   lambda_away?: number
 }
 
+export interface MatchTeamStats {
+  possession: number | null
+  shots_on_target: number | null
+  total_shots: number | null
+  passes: number | null
+  passes_accurate: number | null
+  corners: number | null
+  fouls: number | null
+  yellow_cards: number | null
+  red_cards: number | null
+  saves: number | null
+  xg: number | null
+}
+
+export interface MatchStats {
+  home: MatchTeamStats
+  away: MatchTeamStats
+}
+
 export interface LiveMatch {
   id: number
   home: string
@@ -129,6 +148,7 @@ export interface LiveMatch {
   prematch: LiveProbs | null
   live_probs: LiveProbs | null
   prediction?: LiveProbs
+  match_stats: MatchStats | null
 }
 
 export interface LiveResponse {

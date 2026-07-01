@@ -5,13 +5,115 @@ import { FlagImage } from '../components/shared/FlagImage'
 import { WinProbTimeline } from '../components/charts/WinProbTimeline'
 import { useQuery } from '@tanstack/react-query'
 import { fetchTeams } from '../api'
-import { formatLocalKickoff, formatLocalTime } from '../utils/time'
+import { formatLocalTime } from '../utils/time'
+import type { MatchStats } from '../api/types'
 
 function ProbBadge({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div className="text-center">
       <div className="text-xs text-slate-400">{label}</div>
       <div className="text-lg font-bold" style={{ color }}>{(value * 100).toFixed(0)}%</div>
+    </div>
+  )
+}
+
+function StatRow({
+  label, home, away, higherIsBetter = true, format = (v: number) => String(v),
+}: {
+  label: string
+  home: number | null
+  away: number | null
+  higherIsBetter?: boolean
+  format?: (v: number) => string
+}) {
+  if (home == null && away == null) return null
+  const h = home ?? 0, a = away ?? 0
+  const homeWins = higherIsBetter ? h > a : h < a
+  const awayWins = higherIsBetter ? a > h : a < h
+  return (
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
+      {/* Home value */}
+      <div className="text-right font-semibold" style={{ color: homeWins ? '#5b8fd4' : '#64748b' }}>
+        {home != null ? format(home) : '–'}
+      </div>
+      {/* Label */}
+      <div className="text-center text-[11px] text-slate-400 whitespace-nowrap px-2">{label}</div>
+      {/* Away value */}
+      <div className="font-semibold" style={{ color: awayWins ? '#c41230' : '#64748b' }}>
+        {away != null ? format(away) : '–'}
+      </div>
+    </div>
+  )
+}
+
+function PossessionBar({ home, away }: { home: number | null; away: number | null }) {
+  if (home == null || away == null) return null
+  return (
+    <div className="space-y-1">
+      <div className="text-[11px] text-slate-400 text-center">Possession</div>
+      <div className="flex h-4 rounded-full overflow-hidden text-[10px] font-bold">
+        <div
+          className="flex items-center justify-end pr-1.5 text-white transition-all"
+          style={{ width: `${home}%`, backgroundColor: '#003087' }}
+        >
+          {home > 15 ? `${home}%` : ''}
+        </div>
+        <div
+          className="flex items-center pl-1.5 text-white transition-all"
+          style={{ width: `${away}%`, backgroundColor: '#c41230' }}
+        >
+          {away > 15 ? `${away}%` : ''}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MatchStatsPanel({ stats, home, away }: { stats: MatchStats; home: string; away: string }) {
+  const h = stats.home
+  const a = stats.away
+  return (
+    <div className="rounded-lg px-4 py-3 space-y-3"
+      style={{ backgroundColor: '#0f2040', border: '1px solid rgba(91,143,212,0.15)' }}>
+      {/* Team labels */}
+      <div className="grid grid-cols-[1fr_auto_1fr] text-[11px] font-bold uppercase tracking-wide">
+        <div className="text-right" style={{ color: '#5b8fd4' }}>{home}</div>
+        <div className="px-2 text-slate-500">Stats</div>
+        <div style={{ color: '#c41230' }}>{away}</div>
+      </div>
+
+      <PossessionBar home={h.possession} away={a.possession} />
+
+      <div className="space-y-1.5 pt-1">
+        <StatRow label="Shots on target" home={h.shots_on_target} away={a.shots_on_target} />
+        <StatRow label="Total shots" home={h.total_shots} away={a.total_shots} />
+        {(h.xg != null || a.xg != null) && (
+          <StatRow label="xG" home={h.xg} away={a.xg}
+            format={v => v.toFixed(2)} />
+        )}
+        <StatRow label="Saves" home={h.saves} away={a.saves} />
+
+        {/* Divider */}
+        <div className="h-px my-1" style={{ background: 'rgba(91,143,212,0.1)' }} />
+
+        <StatRow label="Passes" home={h.passes} away={a.passes} />
+        {(h.passes_accurate != null || a.passes_accurate != null) && (
+          <StatRow label="Accurate passes"
+            home={h.passes_accurate} away={a.passes_accurate} />
+        )}
+
+        {/* Divider */}
+        <div className="h-px my-1" style={{ background: 'rgba(91,143,212,0.1)' }} />
+
+        <StatRow label="Corners" home={h.corners} away={a.corners} />
+        <StatRow label="Fouls" home={h.fouls} away={a.fouls} higherIsBetter={false} />
+        <StatRow label="Yellow cards" home={h.yellow_cards} away={a.yellow_cards} higherIsBetter={false}
+          format={v => v > 0 ? `🟨 ${v}` : '0'} />
+        {(h.red_cards != null && h.red_cards > 0) || (a.red_cards != null && a.red_cards > 0) ? (
+          <StatRow label="Red cards" home={h.red_cards} away={a.red_cards} higherIsBetter={false}
+            format={v => v > 0 ? `🟥 ${v}` : '0'} />
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -111,6 +213,11 @@ export function Live() {
                     <ProbBadge label="Draw" value={m.live_probs.p_draw} color="#9ca3af" />
                     <ProbBadge label={`${m.away} win`} value={m.live_probs.p_away} color="#dc2626" />
                   </div>
+                )}
+
+                {/* Live match stats from API-Football */}
+                {m.match_stats && (
+                  <MatchStatsPanel stats={m.match_stats} home={m.home} away={m.away} />
                 )}
 
                 {/* WPA timeline — shows from 1st poll onward */}
