@@ -233,8 +233,8 @@ _AF_ALIASES: dict[str, str] = {
 def fetch_apifootball_live(api_key: str) -> dict[str, dict]:
     """Fetch live WC 2026 matches from API-Football (RapidAPI).
 
-    Returns a dict keyed by '{home}v{away}' mapping to match info with exact minute.
-    Only counts as 1 request — call at most every 10 minutes.
+    Returns a dict keyed by '{home}v{away}' mapping to match info with exact
+    minute and fixture_id (needed to fetch per-match statistics).
     """
     aliases = {**_alias_map(), **_AF_ALIASES}
     try:
@@ -248,12 +248,10 @@ def fetch_apifootball_live(api_key: str) -> dict[str, dict]:
         results: dict[str, dict] = {}
         for f in resp.json().get("response", []):
             league = f.get("league", {})
-            # Filter to FIFA World Cup only
             if league.get("id") != _AF_WC_LEAGUE_ID and "World Cup" not in league.get("name", ""):
                 continue
             status_info = f.get("fixture", {}).get("status", {})
             short = status_info.get("short", "")
-            # Only active live statuses
             if short not in ("1H", "2H", "HT", "ET", "P", "BT"):
                 continue
             teams = f.get("teams", {})
@@ -261,6 +259,7 @@ def fetch_apifootball_live(api_key: str) -> dict[str, dict]:
             home = _norm(teams.get("home", {}).get("name", ""), aliases)
             away = _norm(teams.get("away", {}).get("name", ""), aliases)
             minute = status_info.get("elapsed") or 0
+            fixture_id = f.get("fixture", {}).get("id")
             key = f"{home}v{away}"
             results[key] = {
                 "home": home,
@@ -269,11 +268,83 @@ def fetch_apifootball_live(api_key: str) -> dict[str, dict]:
                 "score_away": goals.get("away") or 0,
                 "minute": int(minute),
                 "status_short": short,
+                "fixture_id": fixture_id,
             }
         return results
     except Exception as e:
         _log.warning("fetch_apifootball_live failed: %s", e)
         return {}
+
+
+# Per-fixture stats cache: fixture_id → (stats_dict, expires_at)
+# TTL of 120 s keeps API usage low even when multiple users poll every 30 s.
+_stats_cache: dict[int, tuple[dict, float]] = {}
+_STATS_TTL = 120.0
+
+
+def _parse_stat(stats_list: list, stat_type: str) -> int | float | None:
+    """Extract a numeric value from API-Football's statistics list."""
+    for s in stats_list:
+        if s.get("type") == stat_type:
+            v = s.get("value")
+            if v is None:
+                return None
+            if isinstance(v, str):
+                v = v.replace("%", "").strip()
+                try:
+                    return float(v)
+                except ValueError:
+                    return None
+            return v
+    return None
+
+
+def fetch_apifootball_stats(api_key: str, fixture_id: int) -> dict | None:
+    """Return live match statistics for a single API-Football fixture.
+
+    Caches per fixture_id for _STATS_TTL seconds to limit API quota usage.
+    Returns None if unavailable or the fixture hasn't started yet.
+    """
+    import time
+    cached_val, expires = _stats_cache.get(fixture_id, (None, 0.0))
+    if time.time() < expires and cached_val is not None:
+        return cached_val
+
+    try:
+        resp = requests.get(
+            f"{_AF_BASE}/fixtures/statistics",
+            params={"fixture": fixture_id},
+            headers={"x-apisports-key": api_key},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json().get("response", [])
+        if len(data) < 2:
+            return None
+
+        def team_stats(entry: dict) -> dict:
+            sl = entry.get("statistics", [])
+            poss_raw = _parse_stat(sl, "Ball Possession")
+            return {
+                "possession":       int(poss_raw) if poss_raw is not None else None,
+                "shots_on_target":  _parse_stat(sl, "Shots on Goal"),
+                "total_shots":      _parse_stat(sl, "Total Shots"),
+                "passes":           _parse_stat(sl, "Total passes"),
+                "passes_accurate":  _parse_stat(sl, "Passes accurate"),
+                "corners":          _parse_stat(sl, "Corner Kicks"),
+                "fouls":            _parse_stat(sl, "Fouls"),
+                "yellow_cards":     _parse_stat(sl, "Yellow Cards"),
+                "red_cards":        _parse_stat(sl, "Red Cards"),
+                "saves":            _parse_stat(sl, "Goalkeeper Saves"),
+                "xg":               _parse_stat(sl, "expected_goals"),
+            }
+
+        result = {"home": team_stats(data[0]), "away": team_stats(data[1])}
+        _stats_cache[fixture_id] = (result, time.time() + _STATS_TTL)
+        return result
+    except Exception as e:
+        _log.warning("fetch_apifootball_stats fixture=%s failed: %s", fixture_id, e)
+        return None
 
 
 def fetch_scheduled_matches(api_key: str, days: int = 30) -> list[dict]:
