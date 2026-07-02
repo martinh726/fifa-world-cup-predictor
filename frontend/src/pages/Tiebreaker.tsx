@@ -13,16 +13,16 @@ const OUTCOME_LABELS: Record<Outcome, string> = {
 }
 
 const OUTCOME_COLORS: Record<Outcome, string> = {
-  home_win: '#003087',
-  draw: '#475569',
-  away_win: '#c41230',
+  home_win: 'var(--color-wc-blue)',
+  draw: 'var(--color-slate-500)',
+  away_win: 'var(--color-wc-red)',
 }
 
 function RankDelta({ before, after }: { before: number; after: number }) {
   const d = before - after // positive = moved up
-  if (d > 0) return <span className="text-green-400 text-xs font-bold">▲{d}</span>
-  if (d < 0) return <span className="text-red-400 text-xs font-bold">▼{Math.abs(d)}</span>
-  return <span className="text-slate-500 text-xs">–</span>
+  if (d > 0) return <span className="text-xs font-bold" style={{ color: 'var(--color-success)' }}>▲{d}</span>
+  if (d < 0) return <span className="text-xs font-bold" style={{ color: 'var(--color-danger)' }}>▼{Math.abs(d)}</span>
+  return <span className="text-slate-400 text-xs">–</span>
 }
 
 function StandingsTable({
@@ -40,7 +40,7 @@ function StandingsTable({
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="text-[10px] uppercase text-slate-500 border-b border-slate-700">
+        <tr className="text-[10px] uppercase text-slate-500 border-b border-slate-200">
           <th className="text-left py-1 font-semibold">#</th>
           <th className="text-left py-1 font-semibold">Team</th>
           <th className="text-right py-1 font-semibold">Pts</th>
@@ -55,33 +55,36 @@ function StandingsTable({
           const is3rd = i === 2
           return (
             <tr key={r.team}
-              className="border-b border-slate-700/40"
+              className="border-b border-slate-100"
               style={{
                 backgroundColor: isQ
-                  ? 'rgba(0,48,135,0.15)'
+                  ? 'rgba(15,63,163,0.07)'
                   : is3rd
-                    ? 'rgba(201,162,39,0.06)'
+                    ? 'rgba(201,150,42,0.08)'
                     : undefined,
               }}
             >
               <td className="py-1.5 pr-2">
-                <span className="text-slate-400 text-xs font-mono">{r.rank}</span>
+                <span className="text-slate-500 text-xs font-mono">{r.rank}</span>
               </td>
               <td className="py-1.5">
                 <div className="flex items-center gap-1.5">
                   <FlagImage code={flags[r.team]} size={16} />
-                  <span className={`text-sm ${isQ ? 'text-white font-semibold' : 'text-slate-300'}`}>
+                  <span className={`text-sm ${isQ ? 'text-slate-900 font-semibold' : 'text-slate-700'}`}>
                     {r.team}
                   </span>
-                  {isQ && <span className="text-[9px] text-green-400 font-bold ml-1">✓ Q</span>}
-                  {is3rd && <span className="text-[9px]" style={{ color: '#c9a227' }}>🏅</span>}
+                  {isQ && <span className="text-[9px] font-bold ml-1" style={{ color: 'var(--color-success)' }}>✓ Q</span>}
+                  {is3rd && <span className="text-[9px]" style={{ color: 'var(--color-wc-gold)' }}>🏅</span>}
                 </div>
               </td>
-              <td className="py-1.5 text-right font-mono font-bold text-slate-200">{r.pts}</td>
-              <td className={`py-1.5 text-right font-mono text-xs ${r.gd > 0 ? 'text-green-400' : r.gd < 0 ? 'text-red-400' : 'text-slate-400'}`}>
+              <td className="py-1.5 text-right font-mono font-bold text-slate-900">{r.pts}</td>
+              <td
+                className="py-1.5 text-right font-mono text-xs"
+                style={{ color: r.gd > 0 ? 'var(--color-success)' : r.gd < 0 ? 'var(--color-danger)' : 'var(--color-slate-500)' }}
+              >
                 {r.gd > 0 ? '+' : ''}{r.gd}
               </td>
-              <td className="py-1.5 text-right font-mono text-xs text-slate-400">{r.gf}</td>
+              <td className="py-1.5 text-right font-mono text-xs text-slate-500">{r.gf}</td>
               <td className="py-1.5 text-right">
                 <RankDelta before={baseRank[r.team] ?? r.rank} after={r.rank} />
               </td>
@@ -105,20 +108,20 @@ function GroupCard({ letter, group, flags }: {
   const scenarioRows = fixture?.scenarios[selectedOutcome] ?? []
 
   return (
-    <div className="rounded-xl overflow-hidden"
-      style={{ border: '1px solid rgba(201,162,39,0.15)', backgroundColor: '#050c1c' }}>
+    <div className="rounded-xl overflow-hidden bg-white border border-slate-200 shadow-sm">
       {/* Group header */}
-      <div className="px-4 py-3 flex items-center justify-between"
-        style={{ backgroundColor: '#09142a', borderBottom: '1px solid rgba(201,162,39,0.1)' }}>
+      <div className="px-4 py-3 flex items-center justify-between bg-slate-50 border-b border-slate-200">
         <div className="flex items-center gap-3">
-          <span className="text-lg font-black text-white">Group {letter}</span>
-          <span className="text-xs text-slate-400">
+          <span className="text-lg font-black text-slate-900">Group {letter}</span>
+          <span className="text-xs text-slate-500">
             {group.games_played}/6 played · {group.games_remaining} remaining
           </span>
         </div>
         {group.tied_pairs.length > 0 && (
-          <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-            style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
+          <span
+            className="text-xs px-2 py-0.5 rounded-full font-semibold"
+            style={{ backgroundColor: 'var(--color-warning-bg)', color: 'var(--color-warning)' }}
+          >
             ⚠ Tiebreaker active
           </span>
         )}
@@ -127,7 +130,7 @@ function GroupCard({ letter, group, flags }: {
       <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Current standings */}
         <div>
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
             Current standings
           </div>
           <StandingsTable rows={group.current_standings} baseline={group.current_standings} flags={flags} />
@@ -135,7 +138,7 @@ function GroupCard({ letter, group, flags }: {
 
         {/* Scenario calculator */}
         <div>
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
             Scenario: what if…
           </div>
 
@@ -147,9 +150,9 @@ function GroupCard({ letter, group, flags }: {
                   onClick={() => setSelectedFixture(i)}
                   className="text-xs px-2 py-1 rounded font-medium transition-colors"
                   style={{
-                    backgroundColor: selectedFixture === i ? '#003087' : '#0f2040',
-                    color: selectedFixture === i ? '#fff' : '#90aacb',
-                    border: `1px solid ${selectedFixture === i ? '#5b8fd4' : '#1a3060'}`,
+                    backgroundColor: selectedFixture === i ? 'var(--color-wc-blue)' : 'var(--color-slate-100)',
+                    color: selectedFixture === i ? '#fff' : 'var(--color-slate-600)',
+                    border: `1px solid ${selectedFixture === i ? 'var(--color-wc-blue)' : 'var(--color-slate-300)'}`,
                   }}
                 >
                   {f.team1} vs {f.team2}
@@ -161,29 +164,27 @@ function GroupCard({ letter, group, flags }: {
           {/* Match being analysed */}
           {fixture && (
             <>
-              <div className="flex items-center justify-center gap-3 py-2 mb-3 rounded-lg"
-                style={{ backgroundColor: '#0f2040' }}>
+              <div className="flex items-center justify-center gap-3 py-2 mb-3 rounded-lg bg-slate-50">
                 <div className="flex items-center gap-1.5">
                   <FlagImage code={flags[fixture.team1]} size={18} />
-                  <span className="text-sm font-semibold text-white">{fixture.team1}</span>
+                  <span className="text-sm font-semibold text-slate-900">{fixture.team1}</span>
                 </div>
                 <span className="text-slate-500 font-bold text-sm">vs</span>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-semibold text-white">{fixture.team2}</span>
+                  <span className="text-sm font-semibold text-slate-900">{fixture.team2}</span>
                   <FlagImage code={flags[fixture.team2]} size={18} />
                 </div>
               </div>
 
               {/* Outcome tabs */}
-              <div className="flex rounded-lg overflow-hidden mb-3"
-                style={{ border: '1px solid #1a3060' }}>
+              <div className="flex rounded-lg overflow-hidden mb-3 border border-slate-300">
                 {(['home_win', 'draw', 'away_win'] as Outcome[]).map(o => (
                   <button key={o}
                     onClick={() => setSelectedOutcome(o)}
                     className="flex-1 py-1.5 text-xs font-semibold transition-colors"
                     style={{
                       backgroundColor: selectedOutcome === o ? OUTCOME_COLORS[o] : 'transparent',
-                      color: selectedOutcome === o ? '#fff' : '#5878a8',
+                      color: selectedOutcome === o ? '#fff' : 'var(--color-slate-500)',
                     }}
                   >
                     {o === 'home_win' ? fixture.team1.split(' ')[0]
@@ -224,7 +225,7 @@ export function Tiebreaker() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-48 text-slate-400 text-sm">
+      <div className="flex items-center justify-center h-48 text-slate-500 text-sm">
         Computing scenarios…
       </div>
     )
@@ -238,8 +239,8 @@ export function Tiebreaker() {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h2 className="text-lg font-bold text-white">Group Tiebreaker Calculator</h2>
-        <p className="text-xs text-slate-400 mt-0.5">
+        <h2 className="text-lg font-bold text-slate-900">Group Tiebreaker Calculator</h2>
+        <p className="text-xs text-slate-500 mt-0.5">
           Select a remaining fixture and outcome to see projected group standings
         </p>
       </div>
@@ -247,30 +248,31 @@ export function Tiebreaker() {
       {!hasActive ? (
         /* All groups complete — show retrospective summary */
         <div className="space-y-4">
-          <div className="bg-slate-800 rounded-xl p-5 text-center">
+          <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-5 text-center">
             <div className="text-3xl mb-2">✅</div>
-            <div className="text-white font-semibold mb-1">All group stage matches complete</div>
-            <div className="text-slate-400 text-sm">
+            <div className="text-slate-900 font-semibold mb-1">All group stage matches complete</div>
+            <div className="text-slate-500 text-sm">
               Below are the final group standings. Tiebreakers were applied where teams finished level on points.
             </div>
           </div>
 
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
             {Object.entries(allGroups).sort(([a], [b]) => a.localeCompare(b)).map(([letter, group]) => (
-              <div key={letter} className="rounded-xl p-4"
-                style={{ backgroundColor: '#09142a', border: '1px solid rgba(201,162,39,0.12)' }}>
+              <div key={letter} className="rounded-xl p-4 bg-white border border-slate-200 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="font-black text-white text-base">Group {letter}</span>
+                  <span className="font-black text-slate-900 text-base">Group {letter}</span>
                   {group.tied_pairs.length > 0 && (
-                    <span className="text-xs px-2 py-0.5 rounded-full"
-                      style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: 'var(--color-warning-bg)', color: 'var(--color-warning)' }}
+                    >
                       ⚖ Tiebreaker applied
                     </span>
                   )}
                 </div>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-slate-500 border-b border-slate-700 text-[10px] uppercase">
+                    <tr className="text-slate-500 border-b border-slate-200 text-[10px] uppercase">
                       <th className="text-left py-1">#</th>
                       <th className="text-left py-1">Team</th>
                       <th className="text-right py-1">Pts</th>
@@ -281,19 +283,22 @@ export function Tiebreaker() {
                   <tbody>
                     {group.current_standings.map((r, i) => (
                       <tr key={r.team}
-                        className="border-b border-slate-700/40"
-                        style={{ backgroundColor: i < 2 ? 'rgba(0,48,135,0.15)' : i === 2 ? 'rgba(201,162,39,0.06)' : undefined }}>
+                        className="border-b border-slate-100"
+                        style={{ backgroundColor: i < 2 ? 'rgba(15,63,163,0.07)' : i === 2 ? 'rgba(201,150,42,0.08)' : undefined }}>
                         <td className="py-1.5 text-slate-500">{r.rank}</td>
                         <td className="py-1.5">
                           <div className="flex items-center gap-1.5">
                             <FlagImage code={flags[r.team]} size={14} />
-                            <span className={i < 2 ? 'text-white font-semibold' : 'text-slate-300'}>{r.team}</span>
-                            {i < 2 && <span className="text-[9px] text-green-400 font-bold">✓</span>}
-                            {i === 2 && <span className="text-[9px]" style={{ color: '#c9a227' }}>🏅</span>}
+                            <span className={i < 2 ? 'text-slate-900 font-semibold' : 'text-slate-700'}>{r.team}</span>
+                            {i < 2 && <span className="text-[9px] font-bold" style={{ color: 'var(--color-success)' }}>✓</span>}
+                            {i === 2 && <span className="text-[9px]" style={{ color: 'var(--color-wc-gold)' }}>🏅</span>}
                           </div>
                         </td>
-                        <td className="py-1.5 text-right font-mono font-bold text-slate-200">{r.pts}</td>
-                        <td className={`py-1.5 text-right font-mono ${r.gd > 0 ? 'text-green-400' : r.gd < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                        <td className="py-1.5 text-right font-mono font-bold text-slate-900">{r.pts}</td>
+                        <td
+                          className="py-1.5 text-right font-mono"
+                          style={{ color: r.gd > 0 ? 'var(--color-success)' : r.gd < 0 ? 'var(--color-danger)' : 'var(--color-slate-500)' }}
+                        >
                           {r.gd > 0 ? '+' : ''}{r.gd}
                         </td>
                         <td className="py-1.5 text-right font-mono text-slate-500">{r.gf}</td>

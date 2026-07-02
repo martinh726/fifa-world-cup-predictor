@@ -13,16 +13,16 @@ function ScoreStepper({ value, onChange }: { value: number; onChange: (v: number
     <div className="flex items-center gap-1">
       <button
         onClick={() => onChange(Math.max(0, value - 1))}
-        className="w-6 h-6 rounded bg-slate-600 hover:bg-slate-500 active:bg-slate-400 text-white font-bold text-sm select-none"
+        className="w-6 h-6 rounded bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-800 font-bold text-sm select-none transition-colors"
       >
         −
       </button>
-      <span className="w-5 text-center font-mono font-bold text-white text-sm tabular-nums">
+      <span className="w-5 text-center font-mono font-bold text-slate-900 text-sm tabular-nums">
         {value}
       </span>
       <button
         onClick={() => onChange(Math.min(15, value + 1))}
-        className="w-6 h-6 rounded bg-slate-600 hover:bg-slate-500 active:bg-slate-400 text-white font-bold text-sm select-none"
+        className="w-6 h-6 rounded bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-800 font-bold text-sm select-none transition-colors"
       >
         +
       </button>
@@ -33,8 +33,8 @@ function ScoreStepper({ value, onChange }: { value: number; onChange: (v: number
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function statusDot(t: StandingTeam) {
-  if (t.status === 'through') return <span title={t.message} className="text-green-400">✓</span>
-  if (t.status === 'eliminated') return <span title={t.message} className="text-red-500">✗</span>
+  if (t.status === 'through') return <span title={t.message} style={{ color: 'var(--color-success)' }}>✓</span>
+  if (t.status === 'eliminated') return <span title={t.message} style={{ color: 'var(--color-danger)' }}>✗</span>
   return null
 }
 
@@ -53,21 +53,21 @@ function WhatIfGroupCard({
 }) {
   return (
     <div
-      className={`bg-slate-800 rounded-xl p-4 ${
-        isAffected ? 'ring-1 ring-blue-500/50' : ''
+      className={`bg-white border border-slate-200 shadow-sm rounded-xl p-4 ${
+        isAffected ? 'ring-1 ring-[var(--color-wc-blue)]/40' : ''
       }`}
     >
-      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
         Group {letter}
         {isAffected && (
-          <span className="text-blue-400 text-xs normal-case tracking-normal font-normal">
+          <span className="text-xs normal-case tracking-normal font-normal" style={{ color: 'var(--color-wc-blue)' }}>
             — scenario applied
           </span>
         )}
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-slate-500 border-b border-slate-700">
+          <tr className="text-slate-500 border-b border-slate-200">
             <th className="text-left py-0.5">#</th>
             <th className="text-left py-0.5">Team</th>
             <th className="text-right py-0.5 px-1">Pts</th>
@@ -80,11 +80,11 @@ function WhatIfGroupCard({
           {gdata.teams.map(t => (
             <tr
               key={t.team}
-              className={`border-b border-slate-700/30 ${
-                t.rank <= 2 ? 'text-white' : 'text-slate-400'
+              className={`border-b border-slate-100 ${
+                t.rank <= 2 ? 'text-slate-900' : 'text-slate-500'
               }`}
             >
-              <td className="py-0.5 text-slate-600 pr-1">{t.rank}</td>
+              <td className="py-0.5 text-slate-400 pr-1">{t.rank}</td>
               <td className="py-0.5">
                 <FlagImage code={flags[t.team]} size={12} />{' '}
                 {t.team}
@@ -106,10 +106,10 @@ function WhatIfGroupCard({
 
 function WhatIfThirds({ thirds, flags }: { thirds: ThirdPlaceTeam[]; flags: Record<string, string> }) {
   if (!thirds.length)
-    return <div className="text-slate-400 text-sm">No group matches recorded yet.</div>
+    return <div className="text-slate-500 text-sm">No group matches recorded yet.</div>
 
   return (
-    <div className="bg-slate-800 rounded-xl p-4">
+    <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
       <p className="text-xs text-slate-500 mb-3">
         Top 8 advance to R32 · Pts → GD → GF · Light bar = max pts with games remaining
       </p>
@@ -123,38 +123,38 @@ function WhatIfThirds({ thirds, flags }: { thirds: ThirdPlaceTeam[]; flags: Reco
             <Fragment key={r.team}>
               {idx === 8 && (
                 <div className="flex items-center gap-2 my-2">
-                  <div className="flex-1 border-t border-dashed border-red-500/50" />
-                  <span className="text-xs text-red-400 whitespace-nowrap px-1">
+                  <div className="flex-1 border-t border-dashed border-[var(--color-danger)]/40" />
+                  <span className="text-xs whitespace-nowrap px-1" style={{ color: 'var(--color-danger)' }}>
                     cutoff — top 8 advance
                   </span>
-                  <div className="flex-1 border-t border-dashed border-red-500/50" />
+                  <div className="flex-1 border-t border-dashed border-[var(--color-danger)]/40" />
                 </div>
               )}
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-600 w-5 text-right shrink-0">{idx + 1}</span>
+                <span className="text-slate-400 w-5 text-right shrink-0">{idx + 1}</span>
                 <span className="text-slate-500 w-4 shrink-0">{r.group}</span>
                 <div className="flex items-center gap-1 w-28 shrink-0">
                   <FlagImage code={flags[r.team]} size={12} />
-                  <span className={`truncate ${isTop8 ? 'text-white font-medium' : 'text-slate-400'}`}>
+                  <span className={`truncate ${isTop8 ? 'text-slate-900 font-medium' : 'text-slate-500'}`}>
                     {r.team}
                   </span>
                 </div>
-                <div className="flex-1 relative h-4 bg-slate-700 rounded overflow-hidden">
+                <div className="flex-1 relative h-4 bg-slate-200 rounded overflow-hidden">
                   {!r.group_done && maxPct > barPct && (
                     <div
-                      className="absolute inset-y-0 left-0 bg-blue-900/60 rounded"
+                      className="absolute inset-y-0 left-0 bg-[var(--color-wc-blue)]/20 rounded"
                       style={{ width: `${maxPct}%` }}
                     />
                   )}
                   <div
-                    className={`absolute inset-y-0 left-0 rounded ${isTop8 ? 'bg-blue-500' : 'bg-slate-500'}`}
+                    className={`absolute inset-y-0 left-0 rounded ${isTop8 ? 'bg-[var(--color-wc-blue)]' : 'bg-slate-400'}`}
                     style={{ width: `${barPct}%` }}
                   />
                 </div>
-                <span className={`w-6 text-right font-bold shrink-0 ${isTop8 ? 'text-white' : 'text-slate-500'}`}>
+                <span className={`w-6 text-right font-bold shrink-0 ${isTop8 ? 'text-slate-900' : 'text-slate-500'}`}>
                   {r.pts}
                 </span>
-                <span className="text-slate-600 shrink-0 w-16 text-right">
+                <span className="text-slate-400 shrink-0 w-16 text-right">
                   {r.gd > 0 ? '+' : ''}
                   {r.gd} GD
                 </span>
@@ -169,30 +169,30 @@ function WhatIfThirds({ thirds, flags }: { thirds: ThirdPlaceTeam[]; flags: Reco
 
 function WhatIfR32({ projections, flags }: { projections: R32Projection[]; flags: Record<string, string> }) {
   if (!projections.length)
-    return <div className="text-slate-400 text-sm">No R32 data available.</div>
+    return <div className="text-slate-500 text-sm">No R32 data available.</div>
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
       {projections.map(m => (
-        <div key={m.match} className="bg-slate-800 rounded-lg p-3 flex items-center gap-3 text-xs">
-          <span className="text-slate-600 w-10 shrink-0 font-mono">M{m.match}</span>
+        <div key={m.match} className="bg-white border border-slate-200 shadow-sm rounded-lg p-3 flex items-center gap-3 text-xs">
+          <span className="text-slate-400 w-10 shrink-0 font-mono">M{m.match}</span>
           <div className="flex-1 truncate">
             {m.team1 ? (
-              <span className="text-white font-medium">
+              <span className="text-slate-900 font-medium">
                 <FlagImage code={flags[m.team1]} size={12} /> {m.team1}
               </span>
             ) : (
-              <span className="text-slate-500 italic">{m.note1}</span>
+              <span className="text-slate-400 italic">{m.note1}</span>
             )}
           </div>
-          <span className="text-slate-600 shrink-0">vs</span>
+          <span className="text-slate-400 shrink-0">vs</span>
           <div className="flex-1 truncate text-right">
             {m.team2 ? (
-              <span className="text-white font-medium">
+              <span className="text-slate-900 font-medium">
                 {m.team2} <FlagImage code={flags[m.team2]} size={12} />
               </span>
             ) : (
-              <span className="text-slate-500 italic">{m.note2}</span>
+              <span className="text-slate-400 italic">{m.note2}</span>
             )}
           </div>
         </div>
@@ -302,15 +302,15 @@ export function ScenarioBuilder() {
     <div className="space-y-5 max-w-6xl">
       {/* Header */}
       <div>
-        <h2 className="text-lg font-bold text-white">Scenario Builder</h2>
-        <p className="text-sm text-slate-400 mt-0.5">
+        <h2 className="text-lg font-bold text-slate-900">Scenario Builder</h2>
+        <p className="text-sm text-slate-500 mt-0.5">
           Set hypothetical scores for unplayed group matches to see how standings, the
           third-place race, and the R32 bracket would look. Played matches are locked.
         </p>
       </div>
 
       {allGroupsComplete ? (
-        <div className="bg-slate-800 rounded-xl p-6 text-center text-slate-400">
+        <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-6 text-center text-slate-500">
           All group-stage matches have been played — the bracket is set.
         </div>
       ) : (
@@ -320,8 +320,8 @@ export function ScenarioBuilder() {
             {Object.entries(fixturesByGroup)
               .sort(([a], [b]) => a.localeCompare(b))
               .map(([group, data]) => (
-                <div key={group} className="bg-slate-800 rounded-xl p-4">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                <div key={group} className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
                     Group {group}
                   </div>
 
@@ -329,18 +329,18 @@ export function ScenarioBuilder() {
                   {data.played.map((r, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-2 py-1.5 opacity-40 text-xs"
+                      className="flex items-center gap-2 py-1.5 text-xs"
                     >
                       <div className="flex items-center gap-1 flex-1 min-w-0">
                         <FlagImage code={flags[r.team1]} size={12} />
-                        <span className="text-slate-300 truncate">{r.team1}</span>
+                        <span className="text-slate-400 truncate">{r.team1}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0 font-mono font-bold text-white text-xs">
+                      <div className="flex items-center gap-1.5 shrink-0 font-mono font-bold text-slate-400 text-xs">
                         {r.score1} – {r.score2}
-                        <span className="text-slate-600 text-xs">🔒</span>
+                        <span className="text-slate-300 text-xs">🔒</span>
                       </div>
                       <div className="flex items-center gap-1 flex-1 min-w-0 justify-end">
-                        <span className="text-slate-300 truncate">{r.team2}</span>
+                        <span className="text-slate-400 truncate">{r.team2}</span>
                         <FlagImage code={flags[r.team2]} size={12} />
                       </div>
                     </div>
@@ -354,21 +354,21 @@ export function ScenarioBuilder() {
                       <div key={key} className="flex items-center gap-2 py-1.5">
                         <div className="flex items-center gap-1 flex-1 min-w-0">
                           <FlagImage code={flags[team1]} size={12} />
-                          <span className="text-white text-xs truncate">{team1}</span>
+                          <span className="text-slate-900 text-xs truncate">{team1}</span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <ScoreStepper
                             value={sc.score1}
                             onChange={v => setScore(team1, team2, 'score1', v)}
                           />
-                          <span className="text-slate-600 text-xs px-0.5">–</span>
+                          <span className="text-slate-400 text-xs px-0.5">–</span>
                           <ScoreStepper
                             value={sc.score2}
                             onChange={v => setScore(team1, team2, 'score2', v)}
                           />
                         </div>
                         <div className="flex items-center gap-1 flex-1 min-w-0 justify-end">
-                          <span className="text-white text-xs truncate">{team2}</span>
+                          <span className="text-slate-900 text-xs truncate">{team2}</span>
                           <FlagImage code={flags[team2]} size={12} />
                         </div>
                       </div>
@@ -383,14 +383,15 @@ export function ScenarioBuilder() {
             <button
               onClick={handleReset}
               disabled={!hasAnyScenario && result === null}
-              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 text-slate-300 rounded-lg text-sm transition-colors"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-700 rounded-lg text-sm transition-colors"
             >
               Reset
             </button>
             <button
               onClick={handleCalculate}
               disabled={!hasAnyScenario || isPending}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors"
+              className="px-5 py-2 text-white rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40 shadow-sm"
+              style={{ backgroundColor: 'var(--color-wc-blue)' }}
             >
               {isPending ? 'Calculating…' : 'Calculate →'}
             </button>
@@ -407,10 +408,10 @@ export function ScenarioBuilder() {
 
       {/* Results */}
       {result && (
-        <div className="space-y-6 border-t border-slate-700 pt-5">
+        <div className="space-y-6 border-t border-slate-200 pt-5">
           {/* Projected standings */}
           <div>
-            <h3 className="text-slate-200 font-semibold mb-3">Projected Group Standings</h3>
+            <h3 className="text-slate-800 font-semibold mb-3">Projected Group Standings</h3>
             {Object.keys(result.standings).length === 0 ? (
               <p className="text-slate-500 text-sm">
                 No groups have any results yet — add at least one scenario above.
@@ -434,14 +435,14 @@ export function ScenarioBuilder() {
 
           {/* Updated third-place race */}
           <div>
-            <h3 className="text-slate-200 font-semibold mb-3">Updated Third-Place Race</h3>
+            <h3 className="text-slate-800 font-semibold mb-3">Updated Third-Place Race</h3>
             <WhatIfThirds thirds={result.third_place_race} flags={flags} />
           </div>
 
           {/* R32 projections */}
           {result.r32_projections.length > 0 && (
             <div>
-              <h3 className="text-slate-200 font-semibold mb-1">Projected R32 Bracket</h3>
+              <h3 className="text-slate-800 font-semibold mb-1">Projected R32 Bracket</h3>
               <p className="text-slate-500 text-xs mb-3">
                 Teams shown where group winners / runners-up are already determined.
                 Unresolved slots show their qualification path.
