@@ -1,66 +1,50 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── Deep royal blue base — WC broadcast atmosphere ───────────────────── */
-  --color-slate-950: #03060f;
-  --color-slate-900: #050c1c;
-  --color-slate-800: #09142a;
-  --color-slate-700: #0f2040;
-  --color-slate-600: #1a3060;
-  --color-slate-500: #2e4a78;
-  --color-slate-400: #5878a8;
-  --color-slate-300: #90aacb;
-  --color-slate-200: #c2d2e8;
-  --color-slate-100: #e4edf8;
+  /* ── Neutral scale — light mode ────────────────────────────────────────── */
+  --color-slate-50:  #ffffff;
+  --color-slate-100: #f7f8fa;
+  --color-slate-200: #eceef2;
+  --color-slate-300: #dde1e8;
+  --color-slate-400: #b6bdc9;
+  --color-slate-500: #8891a1;
+  --color-slate-600: #5b6474;
+  --color-slate-700: #3b4252;
+  --color-slate-800: #232838;
+  --color-slate-900: #14171f;
+  --color-slate-950: #0b0d13;
 
-  /* ── Official broadcaster palette (USA red / WC blue / Mexico green) ──── */
-  --color-wc-red:   #c41230;
-  --color-wc-blue:  #003087;
-  --color-wc-green: #006633;
-  --color-wc-gold:  #c9a227;
-  --color-wc-gold-light: #e8c040;
-  --color-wc-star:  #5b8fd4;
+  /* ── Brand palette — FIFA World Cup 2026 "26" graphic, outer→inner ring ── */
+  --color-wc-blue:   #0F3FA3;
+  --color-wc-lime:   #A8D93B;
+  --color-wc-green:  #0E7A4A;
+  --color-wc-orange: #F0872E;
+  --color-wc-red:    #D3232B;
+  --color-wc-gold:       #C9962A;
+  --color-wc-gold-light: #E8B84B;
+
+  /* ── Semantic colors (light-mode contrast tuned) ──────────────────────── */
+  --color-success:    #1D8A4E;
+  --color-success-bg: #E9F7EF;
+  --color-warning:    #B9720A;
+  --color-warning-bg: #FDF3E2;
+  --color-danger:     #C6242C;
+  --color-danger-bg:  #FBEAEA;
+  --color-info:       #1554B8;
+  --color-info-bg:    #EAF1FC;
 }
 
 :root {
-  color-scheme: dark;
-}
-
-/* Three-panel top stripe: USA red | WC blue | Mexico green */
-html::before {
-  content: '';
-  display: block;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg,
-    #c41230 0% 33.3%,
-    #003087 33.3% 66.6%,
-    #006633 66.6% 100%
-  );
-  z-index: 9999;
+  color-scheme: light;
 }
 
 body {
-  background-color: #050c1c;
-  color: #e4edf8;
+  background-color: var(--color-slate-50);
+  color: var(--color-slate-800);
   font-family: system-ui, -apple-system, sans-serif;
   margin: 0;
-  padding-top: 4px;
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
-}
-
-/* Subtle star-field dot pattern on the main background */
-body {
-  background-image: radial-gradient(
-    circle,
-    rgba(91, 143, 212, 0.08) 1px,
-    transparent 1px
-  );
-  background-size: 32px 32px;
 }
 
 #root {
@@ -73,8 +57,8 @@ body {
   background: transparent !important;
 }
 
-/* Gold scrollbar */
+/* Brand-colored scrollbar */
 ::-webkit-scrollbar         { width: 5px; height: 5px; }
-::-webkit-scrollbar-track   { background: #09142a; }
-::-webkit-scrollbar-thumb   { background: #c9a227; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #e8c040; }
+::-webkit-scrollbar-track   { background: var(--color-slate-200); }
+::-webkit-scrollbar-thumb   { background: var(--color-wc-blue); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-wc-orange); }

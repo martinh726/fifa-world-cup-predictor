@@ -23,7 +23,7 @@ createRoot(document.getElementById('root')!).render(
         <Toaster
           position="bottom-right"
           toastOptions={{
-            style: { background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155' },
+            style: { background: '#ffffff', color: '#232838', border: '1px solid #dde1e8', boxShadow: '0 4px 16px rgba(20,23,31,0.12)' },
             duration: 3000,
           }}
         />
