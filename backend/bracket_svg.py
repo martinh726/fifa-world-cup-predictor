@@ -185,9 +185,51 @@ def build_live_bracket(group_results_all: list, ko_results_all: list, config: di
     )
     thirds = third_place_race(config, group_results_all)
     third_slot_map: dict[int, str] = {}
+
+    # Prefer the ACTUALLY PLAYED opponent over the computed assignment where
+    # possible: assign_third_slots() only guarantees *a* valid pairing that
+    # satisfies each slot's allowed-group constraint, but several valid
+    # pairings can exist and only one matches what FIFA's official draw (and
+    # thus the real bracket) actually used. Every R32 "3:" slot is paired
+    # with a "1X" group-winner slot, so once that group winner's real match
+    # has been played, read the true third-place opponent off the result
+    # instead of trusting the solver's guess.
+    #
+    # ko_results_all carries no round marker, so a team that has advanced
+    # past R32 has one entry per round played and a naive "last write wins"
+    # map could pick up their R16+ opponent instead of their R32 one. Only
+    # trust an entry where EXACTLY one side is a genuine third-place
+    # qualifier — group winners only ever face a third-place team in R32,
+    # so that shape uniquely identifies the R32 "1X vs 3:" match.
+    third_place_pool = {t["team"] for t in thirds}
+    ko_opponent: dict[str, str] = {}
+    for t1, t2, _w in ko_results_all:
+        t1_third, t2_third = t1 in third_place_pool, t2 in third_place_pool
+        if t1_third and not t2_third:
+            ko_opponent[t2] = t1
+        elif t2_third and not t1_third:
+            ko_opponent[t1] = t2
+
+    pinned_groups: set[str] = set()
+    for m in config["round_of_32"]:
+        if not (m["slot1"].startswith("3:") or m["slot2"].startswith("3:")):
+            continue
+        winner_slot = m["slot2"] if m["slot1"].startswith("3:") else m["slot1"]
+        order = group_order.get(winner_slot[1:], [])
+        if not order:
+            continue
+        opponent = ko_opponent.get(order[0])
+        opp_group = group_of.get(opponent) if opponent else None
+        if opponent and opp_group:
+            third_slot_map[m["match"]] = opponent
+            pinned_groups.add(opp_group)
+
     if len(thirds) >= 8:
-        top8_groups = frozenset(t["group"] for t in thirds[:8])
-        group_assignment = assign_third_slots(top8_groups, slot_options)
+        top8_groups = frozenset(t["group"] for t in thirds[:8]) - pinned_groups
+        remaining_slot_options = tuple(
+            (mnum, allowed) for mnum, allowed in slot_options if mnum not in third_slot_map
+        )
+        group_assignment = assign_third_slots(top8_groups, remaining_slot_options)
         group_to_team = {t["group"]: t["team"] for t in thirds}
         for match_num, grp in group_assignment.items():
             team = group_to_team.get(grp)
