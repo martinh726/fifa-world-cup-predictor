@@ -31,9 +31,9 @@ def get_state() -> AppState:
     return _state
 
 
-def initialize(squad_strength: float = 0.18) -> None:
+def initialize(squad_strength: float = 0.18, force_download: bool = False) -> None:
     """Load data and build the predictor singleton. Called once at startup."""
-    download_data()
+    download_data(force=force_download)
     _state.config = load_wc2026()
     _state.results = load_results(download=False)
     _state.shootouts = load_shootouts()
@@ -47,6 +47,12 @@ def initialize(squad_strength: float = 0.18) -> None:
 
 
 def refresh(squad_strength: float = 0.18) -> None:
-    """Re-download data and rebuild the predictor. Thread-safe."""
+    """Re-download the latest results/shootouts data and rebuild the predictor. Thread-safe.
+
+    Unlike startup initialize(), this forces a fresh download — otherwise
+    download_data() would skip re-fetching results.csv/shootouts.csv since
+    the local copies already exist, leaving group standings and the live
+    bracket stuck on whatever snapshot was first downloaded.
+    """
     with _state._lock:
-        initialize(squad_strength)
+        initialize(squad_strength, force_download=True)
