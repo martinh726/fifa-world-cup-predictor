@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchSchedule, fetchTeams } from '../api'
 import { FlagImage } from '../components/shared/FlagImage'
+import { BrandArcPattern } from '../components/shared/BrandArcPattern'
 import { formatLocalKickoff } from '../utils/time'
 
 const STAGE_LABELS: Record<string, string> = {
@@ -16,6 +17,16 @@ const STAGE_LABELS: Record<string, string> = {
   FINAL: 'Final',
 }
 
+const STAGE_DOTS: Record<string, string> = {
+  ROUND_OF_32: 'var(--color-wc-blue)',
+  LAST_32: 'var(--color-wc-blue)',
+  ROUND_OF_16: 'var(--color-wc-green)',
+  LAST_16: 'var(--color-wc-green)',
+  QUARTER_FINALS: 'var(--color-wc-orange)',
+  SEMI_FINALS: 'var(--color-wc-red)',
+  FINAL: 'var(--color-wc-gold)',
+}
+
 function stageLabel(stage?: string) {
   if (!stage) return ''
   return STAGE_LABELS[stage] ?? stage.replace(/_/g, ' ')
@@ -24,15 +35,10 @@ function stageLabel(stage?: string) {
 function stagePill(stage?: string) {
   if (!stage) return null
   const label = stageLabel(stage)
-  let bg = '#1a3060', color = '#90aacb'
-  if (stage === 'FINAL') { bg = 'rgba(201,162,39,0.15)'; color = '#c9a227' }
-  else if (stage === 'SEMI_FINALS') { bg = 'rgba(196,18,48,0.15)'; color = '#c41230' }
-  else if (stage === 'QUARTER_FINALS') { bg = 'rgba(0,48,135,0.3)'; color = '#5b8fd4' }
-  else if (stage === 'ROUND_OF_16' || stage === 'LAST_16') { bg = 'rgba(0,102,51,0.2)'; color = '#4ade80' }
-  else if (stage === 'ROUND_OF_32' || stage === 'LAST_32') { bg = 'rgba(46,74,120,0.3)'; color = '#5878a8' }
+  const dot = STAGE_DOTS[stage] ?? 'var(--color-slate-400)'
   return (
-    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-      style={{ backgroundColor: bg, color }}>
+    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: dot }} />
       {label}
     </span>
   )
@@ -46,7 +52,7 @@ function Countdown({ utcDate }: { utcDate: string }) {
     return () => clearInterval(id)
   }, [utcDate])
 
-  if (diff <= 0) return <span className="text-xs text-green-400 font-semibold">Kickoff!</span>
+  if (diff <= 0) return <span className="text-xs font-semibold" style={{ color: 'var(--color-success)' }}>Kickoff!</span>
 
   const s = Math.floor(diff / 1000)
   const d = Math.floor(s / 86400)
@@ -61,7 +67,7 @@ function Countdown({ utcDate }: { utcDate: string }) {
   if (d === 0) parts.push(`${sec}s`)
 
   return (
-    <span className="text-xs font-mono tabular-nums" style={{ color: '#c9a227' }}>
+    <span className="text-xs font-mono tabular-nums font-semibold" style={{ color: 'var(--color-warning)' }}>
       {parts.join(' ')}
     </span>
   )
@@ -73,16 +79,16 @@ function ProbBars({ p_home, p_draw, p_away, home, away }: {
   return (
     <div className="space-y-1 mt-2">
       {[
-        { label: home.slice(0, 3).toUpperCase(), prob: p_home, color: '#003087' },
-        { label: 'DRW', prob: p_draw, color: '#475569' },
-        { label: away.slice(0, 3).toUpperCase(), prob: p_away, color: '#c41230' },
+        { label: home.slice(0, 3).toUpperCase(), prob: p_home, color: 'var(--color-wc-blue)' },
+        { label: 'DRW', prob: p_draw, color: 'var(--color-slate-400)' },
+        { label: away.slice(0, 3).toUpperCase(), prob: p_away, color: 'var(--color-wc-red)' },
       ].map(({ label, prob, color }) => (
         <div key={label} className="flex items-center gap-1.5">
-          <span className="text-[10px] text-slate-400 w-7 text-right font-mono">{label}</span>
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-slate-700/70">
+          <span className="text-[10px] text-slate-500 w-7 text-right font-mono">{label}</span>
+          <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-slate-200">
             <div className="h-full rounded-full" style={{ width: `${prob * 100}%`, backgroundColor: color }} />
           </div>
-          <span className="text-[10px] text-slate-300 font-mono w-8 text-right">{(prob * 100).toFixed(0)}%</span>
+          <span className="text-[10px] text-slate-600 font-mono w-8 text-right">{(prob * 100).toFixed(0)}%</span>
         </div>
       ))}
     </div>
@@ -124,7 +130,7 @@ export function Schedule() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-48 text-slate-400 text-sm">
+      <div className="flex items-center justify-center h-48 text-slate-500 text-sm">
         Loading fixtures…
       </div>
     )
@@ -132,10 +138,11 @@ export function Schedule() {
 
   if (!grouped.length) {
     return (
-      <div className="bg-slate-800 rounded-xl p-8 text-center">
-        <div className="text-4xl mb-3">📅</div>
-        <div className="text-slate-300 font-semibold mb-1">No upcoming fixtures</div>
-        <div className="text-slate-500 text-sm">
+      <div className="relative overflow-hidden bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
+        <BrandArcPattern variant="full" opacity={0.1} className="absolute inset-0 w-full h-full" />
+        <div className="relative text-4xl mb-3">📅</div>
+        <div className="relative text-slate-700 font-semibold mb-1">No upcoming fixtures</div>
+        <div className="relative text-slate-500 text-sm">
           {scheduleData && 'error' in scheduleData && (scheduleData as any).error
             ? (scheduleData as any).error
             : 'All scheduled matches have been played or no API key is configured.'}
@@ -149,22 +156,22 @@ export function Schedule() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold text-white">Fixtures</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <h2 className="text-lg font-bold text-slate-900">Fixtures</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
             {scheduleData?.matches.length ?? 0} upcoming matches
             {age !== null ? ` · updated ${age}s ago` : ''}
           </p>
         </div>
         <div className="flex gap-2 flex-wrap text-[10px]">
           {[
-            ['Round of 32', '#2e4a78'],
-            ['Round of 16', '#006633'],
-            ['Quarter-Final', '#003087'],
-            ['Semi-Final', '#c41230'],
-            ['Final', '#c9a227'],
+            ['Round of 32', 'var(--color-wc-blue)'],
+            ['Round of 16', 'var(--color-wc-green)'],
+            ['Quarter-Final', 'var(--color-wc-orange)'],
+            ['Semi-Final', 'var(--color-wc-red)'],
+            ['Final', 'var(--color-wc-gold)'],
           ].map(([l, c]) => (
-            <span key={l} className="px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide"
-              style={{ backgroundColor: `${c}30`, color: c }}>
+            <span key={l} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide bg-slate-100 text-slate-600">
+              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: c }} />
               {l}
             </span>
           ))}
@@ -174,8 +181,10 @@ export function Schedule() {
       {/* Date groups */}
       {grouped.map(([dateLabel, matches]) => (
         <div key={dateLabel}>
-          <div className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2 px-1"
-            style={{ borderLeft: '3px solid #c9a227', paddingLeft: 8 }}>
+          <div
+            className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2 px-1"
+            style={{ borderLeft: '3px solid var(--color-wc-gold)', paddingLeft: 8 }}
+          >
             {dateLabel}
           </div>
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -183,35 +192,32 @@ export function Schedule() {
               const hrs = m.utc_date ? hoursUntil(m.utc_date) : Infinity
               const showCountdown = hrs > 0 && hrs < 72
               return (
-                <div key={m.id}
-                  className="rounded-xl p-4 flex flex-col gap-2"
-                  style={{
-                    backgroundColor: '#09142a',
-                    border: '1px solid rgba(201,162,39,0.12)',
-                  }}
+                <div
+                  key={m.id}
+                  className="rounded-xl p-4 flex flex-col gap-2 bg-white border border-slate-200 shadow-sm transition-shadow hover:shadow-md"
                 >
                   {/* Stage + time row */}
                   <div className="flex items-center justify-between gap-2">
                     <div>{stagePill(m.stage)}</div>
-                    <span className="text-xs text-slate-400">{formatLocalKickoff(m.utc_date)}</span>
+                    <span className="text-xs text-slate-500">{formatLocalKickoff(m.utc_date)}</span>
                   </div>
 
                   {/* Teams */}
                   <div className="flex items-center justify-between gap-3 py-1">
                     <div className="flex items-center gap-2 min-w-0">
                       <FlagImage code={flags[m.home]} size={20} />
-                      <span className="text-sm font-semibold text-slate-100 truncate">{m.home}</span>
+                      <span className="text-sm font-semibold text-slate-800 truncate">{m.home}</span>
                     </div>
-                    <span className="text-xs text-slate-500 font-bold shrink-0">vs</span>
+                    <span className="text-xs text-slate-400 font-bold shrink-0">vs</span>
                     <div className="flex items-center gap-2 min-w-0 flex-row-reverse">
                       <FlagImage code={flags[m.away]} size={20} />
-                      <span className="text-sm font-semibold text-slate-100 truncate text-right">{m.away}</span>
+                      <span className="text-sm font-semibold text-slate-800 truncate text-right">{m.away}</span>
                     </div>
                   </div>
 
                   {/* Countdown */}
                   {showCountdown && (
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
                       <span>⏱</span>
                       <Countdown utcDate={m.utc_date} />
                     </div>
