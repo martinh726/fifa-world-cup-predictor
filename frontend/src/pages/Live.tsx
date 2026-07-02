@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useLivePolling } from '../hooks/useLivePolling'
 import { useAppStore } from '../store/useAppStore'
 import { FlagImage } from '../components/shared/FlagImage'
+import { BrandArcPattern } from '../components/shared/BrandArcPattern'
 import { WinProbTimeline } from '../components/charts/WinProbTimeline'
 import { useQuery } from '@tanstack/react-query'
 import { fetchTeams } from '../api'
@@ -11,7 +12,7 @@ import type { MatchStats } from '../api/types'
 function ProbBadge({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div className="text-center">
-      <div className="text-xs text-slate-400">{label}</div>
+      <div className="text-xs text-slate-500">{label}</div>
       <div className="text-lg font-bold" style={{ color }}>{(value * 100).toFixed(0)}%</div>
     </div>
   )
@@ -33,13 +34,13 @@ function StatRow({
   return (
     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-sm">
       {/* Home value */}
-      <div className="text-right font-semibold" style={{ color: homeWins ? '#5b8fd4' : '#64748b' }}>
+      <div className="text-right font-semibold" style={{ color: homeWins ? 'var(--color-wc-blue)' : 'var(--color-slate-400)' }}>
         {home != null ? format(home) : '–'}
       </div>
       {/* Label */}
-      <div className="text-center text-[11px] text-slate-400 whitespace-nowrap px-2">{label}</div>
+      <div className="text-center text-[11px] text-slate-500 whitespace-nowrap px-2">{label}</div>
       {/* Away value */}
-      <div className="font-semibold" style={{ color: awayWins ? '#c41230' : '#64748b' }}>
+      <div className="font-semibold" style={{ color: awayWins ? 'var(--color-wc-red)' : 'var(--color-slate-400)' }}>
         {away != null ? format(away) : '–'}
       </div>
     </div>
@@ -50,17 +51,17 @@ function PossessionBar({ home, away }: { home: number | null; away: number | nul
   if (home == null || away == null) return null
   return (
     <div className="space-y-1">
-      <div className="text-[11px] text-slate-400 text-center">Possession</div>
+      <div className="text-[11px] text-slate-500 text-center">Possession</div>
       <div className="flex h-4 rounded-full overflow-hidden text-[10px] font-bold">
         <div
           className="flex items-center justify-end pr-1.5 text-white transition-all"
-          style={{ width: `${home}%`, backgroundColor: '#003087' }}
+          style={{ width: `${home}%`, backgroundColor: 'var(--color-wc-blue)' }}
         >
           {home > 15 ? `${home}%` : ''}
         </div>
         <div
           className="flex items-center pl-1.5 text-white transition-all"
-          style={{ width: `${away}%`, backgroundColor: '#c41230' }}
+          style={{ width: `${away}%`, backgroundColor: 'var(--color-wc-red)' }}
         >
           {away > 15 ? `${away}%` : ''}
         </div>
@@ -73,13 +74,12 @@ function MatchStatsPanel({ stats, home, away }: { stats: MatchStats; home: strin
   const h = stats.home
   const a = stats.away
   return (
-    <div className="rounded-lg px-4 py-3 space-y-3"
-      style={{ backgroundColor: '#0f2040', border: '1px solid rgba(91,143,212,0.15)' }}>
+    <div className="rounded-lg px-4 py-3 space-y-3 bg-slate-50 border border-slate-200">
       {/* Team labels */}
       <div className="grid grid-cols-[1fr_auto_1fr] text-[11px] font-bold uppercase tracking-wide">
-        <div className="text-right" style={{ color: '#5b8fd4' }}>{home}</div>
+        <div className="text-right" style={{ color: 'var(--color-wc-blue)' }}>{home}</div>
         <div className="px-2 text-slate-500">Stats</div>
-        <div style={{ color: '#c41230' }}>{away}</div>
+        <div style={{ color: 'var(--color-wc-red)' }}>{away}</div>
       </div>
 
       <PossessionBar home={h.possession} away={a.possession} />
@@ -94,7 +94,7 @@ function MatchStatsPanel({ stats, home, away }: { stats: MatchStats; home: strin
         <StatRow label="Saves" home={h.saves} away={a.saves} />
 
         {/* Divider */}
-        <div className="h-px my-1" style={{ background: 'rgba(91,143,212,0.1)' }} />
+        <div className="h-px my-1 bg-slate-200" />
 
         <StatRow label="Passes" home={h.passes} away={a.passes} />
         {(h.passes_accurate != null || a.passes_accurate != null) && (
@@ -103,7 +103,7 @@ function MatchStatsPanel({ stats, home, away }: { stats: MatchStats; home: strin
         )}
 
         {/* Divider */}
-        <div className="h-px my-1" style={{ background: 'rgba(91,143,212,0.1)' }} />
+        <div className="h-px my-1 bg-slate-200" />
 
         <StatRow label="Corners" home={h.corners} away={a.corners} />
         <StatRow label="Fouls" home={h.fouls} away={a.fouls} higherIsBetter={false} />
@@ -149,19 +149,19 @@ export function Live() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between text-xs text-slate-400">
+      <div className="flex items-center justify-between text-xs text-slate-500">
         <span>Auto-refreshes every 30s{age !== null ? ` · updated ${age}s ago` : ''}</span>
-        {data?.error && <span className="text-yellow-400">⚠️ {data.error}</span>}
+        {data?.error && <span style={{ color: 'var(--color-warning)' }}>⚠️ {data.error}</span>}
       </div>
 
       {isLoading && !data && (
-        <div className="text-slate-400 text-sm">Loading live data…</div>
+        <div className="text-slate-500 text-sm">Loading live data…</div>
       )}
 
       {/* Live matches */}
       {matches.length > 0 ? (
         <>
-          <h3 className="text-slate-200 font-semibold">{matches.length} match{matches.length > 1 ? 'es' : ''} in progress</h3>
+          <h3 className="text-slate-800 font-semibold">{matches.length} match{matches.length > 1 ? 'es' : ''} in progress</h3>
           {matches.map(m => {
             const key = `${m.home}v${m.away}`
             const history = wpaHistory[key] ?? []
@@ -181,37 +181,40 @@ export function Live() {
             }
 
             return (
-              <div key={key} className="bg-slate-800 rounded-xl p-5 space-y-4">
+              <div key={key} className="bg-white border border-slate-200 shadow-sm rounded-xl p-5 space-y-4">
                 {/* Score row */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <FlagImage code={flags[m.home]} size={28} alt={m.home} />
-                    <span className="text-lg font-bold text-white">{m.home}</span>
+                    <span className="text-lg font-bold text-slate-900">{m.home}</span>
                   </div>
                   <div className="text-center">
-                    <div className="text-3xl font-bold font-mono text-white">
+                    <div className="text-3xl font-bold font-mono text-slate-900">
                       {m.score_home} – {m.score_away}
                     </div>
-                    <div className="text-xs text-amber-400 font-semibold">{minLabel}</div>
+                    <div className="text-xs font-semibold" style={{ color: 'var(--color-warning)' }}>{minLabel}</div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-white">{m.away}</span>
+                    <span className="text-lg font-bold text-slate-900">{m.away}</span>
                     <FlagImage code={flags[m.away]} size={28} alt={m.away} />
                   </div>
                 </div>
 
                 {upsetAlert && (
-                  <div className="bg-amber-500/20 border border-amber-500/40 rounded-lg px-3 py-2 text-center">
-                    <span className="text-amber-300 font-semibold text-sm">⚡ UPSET IN PROGRESS — {upsetAlert}</span>
+                  <div
+                    className="rounded-lg px-3 py-2 text-center border"
+                    style={{ backgroundColor: 'var(--color-warning-bg)', borderColor: 'rgba(185,114,10,0.3)' }}
+                  >
+                    <span className="font-semibold text-sm" style={{ color: 'var(--color-warning)' }}>⚡ UPSET IN PROGRESS — {upsetAlert}</span>
                   </div>
                 )}
 
                 {/* Live probabilities */}
                 {m.live_probs && (
                   <div className="grid grid-cols-3 gap-2">
-                    <ProbBadge label={`${m.home} win`} value={m.live_probs.p_home} color="#2563eb" />
-                    <ProbBadge label="Draw" value={m.live_probs.p_draw} color="#9ca3af" />
-                    <ProbBadge label={`${m.away} win`} value={m.live_probs.p_away} color="#dc2626" />
+                    <ProbBadge label={`${m.home} win`} value={m.live_probs.p_home} color="var(--color-wc-blue)" />
+                    <ProbBadge label="Draw" value={m.live_probs.p_draw} color="var(--color-slate-400)" />
+                    <ProbBadge label={`${m.away} win`} value={m.live_probs.p_away} color="var(--color-wc-red)" />
                   </div>
                 )}
 
@@ -228,14 +231,14 @@ export function Live() {
                 {/* Pre-match prediction */}
                 {m.prematch && (
                   <details>
-                    <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-300">
+                    <summary className="text-xs text-slate-500 cursor-pointer transition-colors hover:text-slate-700">
                       Pre-match prediction
                     </summary>
                     <div className="mt-2 flex gap-4 text-sm">
-                      <span className="text-blue-400">{m.home} {(m.prematch.p_home * 100).toFixed(0)}%</span>
-                      <span className="text-slate-400">Draw {(m.prematch.p_draw * 100).toFixed(0)}%</span>
-                      <span className="text-red-400">{m.away} {(m.prematch.p_away * 100).toFixed(0)}%</span>
-                      <span className="text-slate-500">
+                      <span style={{ color: 'var(--color-wc-blue)' }}>{m.home} {(m.prematch.p_home * 100).toFixed(0)}%</span>
+                      <span className="text-slate-500">Draw {(m.prematch.p_draw * 100).toFixed(0)}%</span>
+                      <span style={{ color: 'var(--color-wc-red)' }}>{m.away} {(m.prematch.p_away * 100).toFixed(0)}%</span>
+                      <span className="text-slate-400">
                         xG {m.prematch.lambda_home?.toFixed(2)} – {m.prematch.lambda_away?.toFixed(2)}
                       </span>
                     </div>
@@ -250,26 +253,26 @@ export function Live() {
           {/* Today's upcoming matches */}
           {upcoming.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-slate-200 font-semibold">Today's upcoming matches</h3>
+              <h3 className="text-slate-800 font-semibold">Today's upcoming matches</h3>
               {upcoming.map((m, i) => (
-                <div key={i} className="bg-slate-800 rounded-xl p-4">
+                <div key={i} className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <FlagImage code={flags[m.home]} size={24} alt={m.home} />
-                      <span className="font-semibold text-white">{m.home}</span>
-                      <span className="text-slate-400">vs</span>
+                      <span className="font-semibold text-slate-900">{m.home}</span>
+                      <span className="text-slate-500">vs</span>
                       <FlagImage code={flags[m.away]} size={24} alt={m.away} />
-                      <span className="font-semibold text-white">{m.away}</span>
+                      <span className="font-semibold text-slate-900">{m.away}</span>
                     </div>
-                    <div className="text-slate-400 text-sm">
+                    <div className="text-slate-500 text-sm">
                       {formatLocalTime(m.utc_date)}
                     </div>
                   </div>
                   {m.prediction && (
                     <div className="flex gap-4 mt-2 text-sm">
-                      <span className="text-blue-400 font-semibold">{(m.prediction.p_home * 100).toFixed(0)}%</span>
-                      <span className="text-slate-400">{(m.prediction.p_draw * 100).toFixed(0)}%</span>
-                      <span className="text-red-400 font-semibold">{(m.prediction.p_away * 100).toFixed(0)}%</span>
+                      <span className="font-semibold" style={{ color: 'var(--color-wc-blue)' }}>{(m.prediction.p_home * 100).toFixed(0)}%</span>
+                      <span className="text-slate-500">{(m.prediction.p_draw * 100).toFixed(0)}%</span>
+                      <span className="font-semibold" style={{ color: 'var(--color-wc-red)' }}>{(m.prediction.p_away * 100).toFixed(0)}%</span>
                     </div>
                   )}
                 </div>
@@ -278,9 +281,10 @@ export function Live() {
           )}
 
           {!isLoading && upcoming.length === 0 && (
-            <div className="bg-slate-800 rounded-xl p-6 text-center text-slate-400">
-              <div className="text-3xl mb-2">⏸</div>
-              <div>No matches currently in progress or scheduled today.</div>
+            <div className="relative overflow-hidden bg-white border border-slate-200 shadow-sm rounded-xl p-6 text-center text-slate-500">
+              <BrandArcPattern variant="full" opacity={0.1} className="absolute inset-0 w-full h-full" />
+              <div className="relative text-3xl mb-2">⏸</div>
+              <div className="relative">No matches currently in progress or scheduled today.</div>
             </div>
           )}
         </>
