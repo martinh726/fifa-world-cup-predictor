@@ -1,4 +1,5 @@
 import Plot from 'react-plotly.js'
+import { baseLayout, CHART_COLORS, CHART_CONFIG } from './plotlyTheme'
 
 interface WpaPoint { minute: number; p_home: number; p_draw: number; p_away: number }
 
@@ -38,47 +39,45 @@ export function WinProbTimeline({ points, home, away }: Props) {
             ...traceBase,
             x: minutes, y: points.map(p => p.p_home),
             name: home,
-            line: { color: '#3b82f6', width: 2.5 },
-            marker: { ...traceBase.marker, color: '#3b82f6' },
+            line: { color: CHART_COLORS.home, width: 2.5 },
+            marker: { ...traceBase.marker, color: CHART_COLORS.home },
           },
           {
             ...traceBase,
             x: minutes, y: points.map(p => p.p_draw),
             name: 'Draw',
-            line: { color: '#94a3b8', width: 2, dash: 'dot' },
-            marker: { ...traceBase.marker, color: '#94a3b8' },
+            line: { color: CHART_COLORS.draw, width: 2, dash: 'dot' },
+            marker: { ...traceBase.marker, color: CHART_COLORS.draw },
           },
           {
             ...traceBase,
             x: minutes, y: points.map(p => p.p_away),
             name: away,
-            line: { color: '#f87171', width: 2.5 },
-            marker: { ...traceBase.marker, color: '#f87171' },
+            line: { color: CHART_COLORS.away, width: 2.5 },
+            marker: { ...traceBase.marker, color: CHART_COLORS.away },
           },
         ] as any[]}
-        layout={{
+        layout={baseLayout({
           height: 240,
-          paper_bgcolor: 'transparent',
-          plot_bgcolor: '#0f172a',
-          font: { color: '#cbd5e1', size: 11 },
+          font: { color: CHART_COLORS.textMuted, size: 11 },
           margin: { l: 44, r: 12, t: 8, b: 36 },
           xaxis: {
-            title: { text: 'Minute', font: { size: 10, color: '#64748b' } },
+            title: { text: 'Minute', font: { size: 10, color: CHART_COLORS.textMuted } },
             range: [0, 95],
-            color: '#475569',
-            gridcolor: '#1e293b',
-            linecolor: '#334155',
-            tickcolor: '#475569',
+            color: CHART_COLORS.textMuted,
+            gridcolor: CHART_COLORS.grid,
+            linecolor: CHART_COLORS.line,
+            tickcolor: CHART_COLORS.textMuted,
             dtick: 15,
             tickfont: { size: 10 },
           },
           yaxis: {
             tickformat: '.0%',
             range: [0, 1],
-            color: '#475569',
-            gridcolor: '#1e293b',
-            linecolor: '#334155',
-            tickcolor: '#475569',
+            color: CHART_COLORS.textMuted,
+            gridcolor: CHART_COLORS.grid,
+            linecolor: CHART_COLORS.line,
+            tickcolor: CHART_COLORS.textMuted,
             tickfont: { size: 10 },
             dtick: 0.25,
           },
@@ -86,17 +85,17 @@ export function WinProbTimeline({ points, home, away }: Props) {
             orientation: 'h',
             x: 0.5, xanchor: 'center',
             y: 1.08, yanchor: 'bottom',
-            font: { size: 11, color: '#cbd5e1' },
+            font: { size: 11, color: CHART_COLORS.text },
             bgcolor: 'transparent',
           },
           hovermode: 'x unified',
           hoverlabel: {
-            bgcolor: '#1e293b',
-            bordercolor: '#475569',
-            font: { color: '#e2e8f0', size: 12, family: 'monospace' },
+            bgcolor: CHART_COLORS.cardBg,
+            bordercolor: CHART_COLORS.line,
+            font: { color: CHART_COLORS.text, size: 12, family: 'monospace' },
           },
-        }}
-        config={{ displayModeBar: false, responsive: true }}
+        })}
+        config={CHART_CONFIG}
         style={{ width: '100%' }}
       />
     </div>

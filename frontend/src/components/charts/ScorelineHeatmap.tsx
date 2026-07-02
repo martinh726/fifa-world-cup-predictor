@@ -1,4 +1,5 @@
 import Plot from 'react-plotly.js'
+import { baseLayout, CHART_COLORS, CHART_CONFIG } from './plotlyTheme'
 
 interface Props {
   matrix: number[][]
@@ -20,20 +21,18 @@ export function ScorelineHeatmap({ matrix, home, away }: Props) {
         y: labels,
         text,
         texttemplate: '%{text}',
-        colorscale: 'Blues',
+        colorscale: [[0, CHART_COLORS.cardBg], [1, CHART_COLORS.home]],
         showscale: false,
         hovertemplate: `${home} %{y} – %{x} ${away}: %{text}<extra></extra>`,
       } as any]}
-      layout={{
+      layout={baseLayout({
         height: 380,
-        paper_bgcolor: 'transparent',
-        plot_bgcolor: '#1e293b',
-        font: { color: '#e2e8f0', size: 11 },
+        font: { color: CHART_COLORS.text, size: 11 },
         margin: { l: 40, r: 10, t: 10, b: 50 },
-        xaxis: { title: `${away} goals`, color: '#94a3b8', gridcolor: '#334155' },
-        yaxis: { title: `${home} goals`, color: '#94a3b8', gridcolor: '#334155' },
-      }}
-      config={{ displayModeBar: false, responsive: true }}
+        xaxis: { title: { text: `${away} goals` }, color: CHART_COLORS.textMuted, gridcolor: CHART_COLORS.line },
+        yaxis: { title: { text: `${home} goals` }, color: CHART_COLORS.textMuted, gridcolor: CHART_COLORS.line },
+      })}
+      config={CHART_CONFIG}
       style={{ width: '100%' }}
     />
   )

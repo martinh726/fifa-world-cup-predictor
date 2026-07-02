@@ -1,4 +1,5 @@
 import Plot from 'react-plotly.js'
+import { baseLayout, CHART_COLORS, CHART_CONFIG } from './plotlyTheme'
 
 interface Props {
   home: string
@@ -16,21 +17,19 @@ export function ProbabilityBar({ home, away, pHome, pDraw, pAway }: Props) {
         x: [pHome, pDraw, pAway],
         y: [`${home} win`, 'Draw', `${away} win`],
         orientation: 'h',
-        marker: { color: ['#2563eb', '#6b7280', '#dc2626'] },
+        marker: { color: [CHART_COLORS.home, CHART_COLORS.draw, CHART_COLORS.away] },
         text: [`${(pHome * 100).toFixed(1)}%`, `${(pDraw * 100).toFixed(1)}%`, `${(pAway * 100).toFixed(1)}%`],
         textposition: 'auto',
       } as any]}
-      layout={{
+      layout={baseLayout({
         height: 200,
-        paper_bgcolor: 'transparent',
-        plot_bgcolor: 'transparent',
-        font: { color: '#e2e8f0', size: 13 },
+        font: { color: CHART_COLORS.text, size: 13 },
         margin: { l: 90, r: 20, t: 10, b: 30 },
-        xaxis: { tickformat: '.0%', range: [0, 1], color: '#94a3b8', gridcolor: '#1e293b' },
-        yaxis: { color: '#e2e8f0' },
+        xaxis: { tickformat: '.0%', range: [0, 1], color: CHART_COLORS.textMuted, gridcolor: CHART_COLORS.grid },
+        yaxis: { color: CHART_COLORS.text },
         showlegend: false,
-      }}
-      config={{ displayModeBar: false, responsive: true }}
+      })}
+      config={CHART_CONFIG}
       style={{ width: '100%' }}
     />
   )

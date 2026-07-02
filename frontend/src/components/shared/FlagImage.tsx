@@ -12,7 +12,12 @@ export function FlagImage({ code, size = 24, alt = '' }: Props) {
       alt={alt}
       width={size}
       height={Math.round(size * 0.67)}
-      style={{ borderRadius: 2, display: 'inline-block', verticalAlign: 'middle' }}
+      style={{
+        borderRadius: 2,
+        display: 'inline-block',
+        verticalAlign: 'middle',
+        boxShadow: '0 0 0 1px rgba(20,23,31,0.08)',
+      }}
       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
     />
   )
