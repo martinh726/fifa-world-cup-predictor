@@ -1,92 +1,62 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Trophy, Users, ClipboardList, RefreshCw, Plus, X } from 'lucide-react'
 import { fetchBacktestReport, fetchTeams, triggerRefresh } from '../../api'
 import { useAppStore } from '../../store/useAppStore'
 import { BrandArcPattern } from './BrandArcPattern'
+import { Button } from '../ui/Button'
+import { Collapsible } from '../ui/Collapsible'
 import toast from 'react-hot-toast'
 
-// ── Styled header inspired by the FIFA World Cup 2026 "26" graphic ──────────
+// ── Logotype header — stacked Anton "26" in a gold sweep ────────────────────
 function SidebarHeader() {
   return (
-    <div className="relative overflow-hidden" style={{ backgroundColor: 'var(--color-wc-blue)' }}>
-      {/* Five-panel brand colour strip at top */}
-      <div className="flex h-1.5">
-        <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-blue)' }} />
-        <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-lime)' }} />
-        <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-green)' }} />
-        <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-orange)' }} />
-        <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-red)' }} />
+    <div className="relative overflow-hidden border-b border-white/[0.06]">
+      {/* Host-nation hairline */}
+      <div className="flex h-1" aria-hidden="true">
+        <div className="flex-1 bg-host-red" />
+        <div className="flex-1 bg-host-blue-bright" />
+        <div className="flex-1 bg-host-green" />
       </div>
 
-      {/* Logo content */}
-      <div className="relative px-4 py-5 text-center">
+      <div className="relative px-4 pt-6 pb-5 text-center">
         <BrandArcPattern
           variant="corner"
-          opacity={0.22}
+          opacity={0.16}
           className="absolute -top-4 -right-4 w-28 h-28 pointer-events-none"
         />
 
-        {/* FIFA text */}
-        <div
-          className="relative text-xs font-black uppercase tracking-[0.35em] mb-0.5"
-          style={{ color: 'rgba(255,255,255,0.75)' }}
-        >
-          FIFA
+        <div className="relative text-[10px] uppercase tracking-[0.42em] font-semibold text-ink-400">
+          FIFA World Cup
         </div>
 
-        {/* WORLD CUP */}
-        <div className="relative text-xl font-black tracking-wide text-white uppercase leading-none">
-          World Cup
-        </div>
-
-        {/* 2026 — gradient sweep across the full brand palette */}
         <div
-          className="relative text-5xl font-black tracking-tighter leading-none mt-0.5"
+          className="relative font-display text-[76px] leading-none mt-1 bg-clip-text text-transparent select-none"
           style={{
-            backgroundImage:
-              'linear-gradient(90deg, var(--color-wc-lime), var(--color-wc-orange), var(--color-wc-gold-light))',
-            WebkitBackgroundClip: 'text',
-            backgroundClip: 'text',
-            color: 'transparent',
-            filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.15))',
+            backgroundImage: 'linear-gradient(180deg, #E9CE7A 0%, #D4AF37 55%, #9A7B1E 100%)',
+            filter: 'drop-shadow(0 3px 12px rgba(212,175,55,0.28))',
           }}
         >
-          2026
+          26
         </div>
 
-        {/* Trophy emoji with glow */}
-        <div className="relative text-2xl mt-1" style={{ filter: 'drop-shadow(0 0 6px rgba(201,150,42,0.7))' }}>
-          🏆
-        </div>
-
-        {/* Predictor label */}
-        <div
-          className="relative text-[10px] uppercase tracking-[0.3em] mt-1.5 font-semibold"
-          style={{ color: 'rgba(255,255,255,0.6)' }}
-        >
-          Predictor
-        </div>
-
-        {/* Five-panel brand colour strip at bottom */}
-        <div className="relative flex h-1 mt-4 rounded-full overflow-hidden">
-          <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-blue)' }} />
-          <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-lime)' }} />
-          <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-green)' }} />
-          <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-orange)' }} />
-          <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-red)' }} />
+        <div className="relative flex items-center justify-center gap-2 mt-2.5">
+          <Trophy size={13} className="text-gold" strokeWidth={2.2} />
+          <span className="text-[10px] uppercase tracking-[0.35em] font-semibold text-ink-300">
+            Predictor
+          </span>
         </div>
       </div>
     </div>
   )
 }
 
-// ── Main sidebar ─────────────────────────────────────────────────────────────
+// ── Main sidebar — floating dark-glass rail ──────────────────────────────────
 
-export function Sidebar() {
+export function Sidebar({ onClose }: { onClose?: () => void }) {
   const { squadStrength, setSquadStrength, injuries, setInjury, clearInjuries } = useAppStore()
   const queryClient = useQueryClient()
   const [showReport, setShowReport] = useState(false)
-  const [showInjuries, setShowInjuries] = useState(false)
   const [injuryTeam, setInjuryTeam] = useState('')
   const [injuryN, setInjuryN] = useState(1)
 
@@ -111,16 +81,29 @@ export function Sidebar() {
 
   const activeInjuries = Object.entries(injuries).filter(([, n]) => n > 0)
 
+  const inputClass =
+    'bg-white/[0.05] border border-[var(--glass-border)] rounded-lg text-ink-50 text-xs transition-colors focus:outline-none focus:border-gold/60'
+
   return (
-    <aside className="w-64 flex-shrink-0 flex flex-col overflow-y-auto bg-white border-r border-slate-200">
+    <aside className="border-beam relative w-64 h-full flex flex-col overflow-hidden rounded-2xl bg-ink-900/70 backdrop-blur-xl border border-[var(--glass-border)] shadow-[0_20px_60px_-20px_rgba(0,0,0,0.7)]">
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="absolute right-2 top-3 z-10 min-h-11 min-w-11 grid place-items-center text-ink-400 hover:text-ink-50 transition-colors cursor-pointer lg:hidden"
+          aria-label="Close menu"
+        >
+          <X size={18} />
+        </button>
+      )}
+
       <SidebarHeader />
 
-      <div className="flex flex-col gap-4 px-4 py-5 flex-1">
+      <div className="flex flex-col gap-3.5 px-3.5 py-4 flex-1 overflow-y-auto">
         {/* Squad strength */}
-        <div className="bg-slate-50 rounded-lg border border-slate-200 p-3">
-          <label className="text-xs font-semibold text-slate-600 block mb-2">
-            Squad strength:{' '}
-            <span className="font-bold" style={{ color: 'var(--color-wc-blue)' }}>
+        <div className="bg-white/[0.04] rounded-xl border border-white/[0.07] p-3">
+          <label className="text-[11px] uppercase tracking-[0.14em] font-semibold text-ink-400 block mb-2">
+            Squad strength{' '}
+            <span className="font-display text-sm text-gold tracking-normal ml-1">
               {squadStrength.toFixed(2)}
             </span>
           </label>
@@ -129,129 +112,124 @@ export function Sidebar() {
             min={0} max={0.5} step={0.01}
             value={squadStrength}
             onChange={e => setSquadStrength(parseFloat(e.target.value))}
-            className="w-full"
-            style={{ accentColor: 'var(--color-wc-blue)' }}
+            className="w-full cursor-pointer"
+            style={{ accentColor: 'var(--color-gold)' }}
           />
-          <div className="flex justify-between text-xs text-slate-400 mt-0.5">
+          <div className="flex justify-between text-[10px] text-ink-500 mt-0.5">
             <span>0.00</span><span>0.25</span><span>0.50</span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-[11px] text-ink-400 mt-1.5 leading-relaxed">
             Blends FIFA ranking + squad metrics. Default 0.18.
           </p>
         </div>
 
-        <BrandArcPattern variant="divider" className="h-1 w-full" />
-
         {/* Injury overrides */}
-        <div className="bg-slate-50 rounded-lg border border-slate-200 p-3">
-          <button
-            onClick={() => setShowInjuries(v => !v)}
-            className="w-full text-left text-xs font-semibold text-slate-600 flex items-center justify-between transition-colors hover:text-slate-900"
-          >
-            <span>🤕 Injury overrides {activeInjuries.length > 0 ? `(${activeInjuries.length})` : ''}</span>
-            <span className="text-slate-400">{showInjuries ? '▲' : '▼'}</span>
-          </button>
-          {showInjuries && (
-            <div className="mt-2 space-y-2">
-              <p className="text-xs text-slate-500">
-                Reduce squad quality by marking key players absent.
-              </p>
-              <div className="flex gap-1">
-                <select
-                  value={injuryTeam}
-                  onChange={e => setInjuryTeam(e.target.value)}
-                  className="flex-1 rounded px-1 py-1 text-xs text-slate-800 bg-white border border-slate-300 transition-colors focus:outline-none focus:border-[var(--color-wc-blue)]"
-                >
-                  <option value="">Team…</option>
-                  {teams.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <input
-                  type="number" min={1} max={5} value={injuryN}
-                  onChange={e => setInjuryN(+e.target.value)}
-                  className="w-12 rounded px-1 py-1 text-xs text-slate-800 bg-white border border-slate-300 transition-colors focus:outline-none focus:border-[var(--color-wc-blue)]"
-                />
+        <Collapsible
+          title="Injuries"
+          icon={Users}
+          accent="red"
+          badge={
+            activeInjuries.length > 0 ? (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-host-red/20 text-host-red">
+                {activeInjuries.length}
+              </span>
+            ) : undefined
+          }
+        >
+          <div className="space-y-2.5">
+            <p className="text-[11px] text-ink-400 leading-relaxed">
+              Reduce squad quality by marking key players absent.
+            </p>
+            <div className="flex gap-1.5">
+              <select
+                value={injuryTeam}
+                onChange={e => setInjuryTeam(e.target.value)}
+                className={`flex-1 min-w-0 px-2 py-1.5 ${inputClass}`}
+              >
+                <option value="" className="bg-ink-900">Team…</option>
+                {teams.map(t => <option key={t} value={t} className="bg-ink-900">{t}</option>)}
+              </select>
+              <input
+                type="number" min={1} max={5} value={injuryN}
+                onChange={e => setInjuryN(+e.target.value)}
+                className={`w-12 px-2 py-1.5 ${inputClass}`}
+              />
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Plus}
+                aria-label="Add injury"
+                onClick={() => { if (injuryTeam) setInjury(injuryTeam, injuryN) }}
+              />
+            </div>
+            {activeInjuries.length > 0 && (
+              <div className="space-y-1">
+                {activeInjuries.map(([t, n]) => (
+                  <div key={t} className="flex items-center justify-between text-xs">
+                    <span className="text-ink-200">{t}: {n} absent</span>
+                    <button
+                      onClick={() => setInjury(t, 0)}
+                      className="text-host-red hover:opacity-70 transition-opacity cursor-pointer p-1"
+                      aria-label={`Remove ${t} injury`}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
                 <button
-                  onClick={() => { if (injuryTeam) setInjury(injuryTeam, injuryN) }}
-                  className="text-white rounded px-2 py-1 text-xs font-bold transition-opacity hover:opacity-90"
-                  style={{ backgroundColor: 'var(--color-wc-red)' }}
+                  onClick={clearInjuries}
+                  className="text-[11px] text-ink-500 hover:text-ink-200 transition-colors cursor-pointer"
                 >
-                  +
+                  Clear all
                 </button>
               </div>
-              {activeInjuries.length > 0 && (
-                <div className="space-y-1">
-                  {activeInjuries.map(([t, n]) => (
-                    <div key={t} className="flex items-center justify-between text-xs">
-                      <span className="text-slate-600">{t}: {n} absent</span>
-                      <button
-                        onClick={() => setInjury(t, 0)}
-                        className="text-[var(--color-wc-red)] hover:opacity-70"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                  <button onClick={clearInjuries} className="text-xs text-slate-400 hover:text-slate-700">
-                    Clear all
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <BrandArcPattern variant="divider" className="h-1 w-full" />
+            )}
+          </div>
+        </Collapsible>
 
         {/* Data refresh */}
         <div>
-          <button
+          <Button
+            variant="primary"
+            className="w-full"
+            icon={RefreshCw}
+            loading={refreshing}
             onClick={() => doRefresh()}
-            disabled={refreshing}
-            className="w-full px-3 py-2 disabled:opacity-50 text-white text-sm rounded-lg font-bold uppercase tracking-wide transition-opacity hover:opacity-90 shadow-sm"
-            style={{ backgroundColor: 'var(--color-wc-blue)' }}
           >
-            {refreshing ? '⏳ Refreshing…' : '🔄 Refresh data'}
-          </button>
-          <p className="text-xs text-slate-500 mt-1">Re-fetches API data and rebuilds predictor.</p>
+            {refreshing ? 'Refreshing…' : 'Refresh data'}
+          </Button>
+          <p className="text-[11px] text-ink-500 mt-1.5">Re-fetches API data and rebuilds predictor.</p>
         </div>
 
         {/* Backtest report */}
-        <div>
-          <button
-            onClick={() => setShowReport(v => !v)}
-            className="w-full text-left text-xs font-semibold text-slate-600 flex items-center justify-between transition-colors hover:text-slate-900"
-          >
-            <span>📋 Backtest report</span>
-            <span className="text-slate-400">{showReport ? '▲' : '▼'}</span>
-          </button>
-          {showReport && (
-            <div className="mt-2">
-              {reportData?.content ? (
-                <pre className="text-xs text-slate-700 whitespace-pre-wrap rounded p-2 max-h-64 overflow-y-auto bg-slate-100 border border-slate-200">
-                  {reportData.content}
-                </pre>
-              ) : (
-                <div className="text-xs text-slate-500">
-                  No backtest report found. Run the backtest script first.
-                </div>
-              )}
-            </div>
+        <Collapsible title="Backtest report" icon={ClipboardList} accent="blue">
+          {showReport ? (
+            reportData?.content ? (
+              <pre className="text-[11px] text-ink-200 whitespace-pre-wrap rounded-lg p-2.5 max-h-64 overflow-y-auto bg-ink-950/60 border border-white/[0.07]">
+                {reportData.content}
+              </pre>
+            ) : (
+              <div className="text-xs text-ink-400">
+                No backtest report found. Run the backtest script first.
+              </div>
+            )
+          ) : (
+            <Button variant="secondary" size="sm" onClick={() => setShowReport(true)}>
+              Load report
+            </Button>
           )}
-        </div>
+        </Collapsible>
 
         <div className="flex-1" />
 
         {/* Footer */}
-        <div className="text-center space-y-2">
-          {/* Mini five-panel stripe */}
-          <div className="flex h-0.5 rounded-full overflow-hidden opacity-60">
-            <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-blue)' }} />
-            <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-lime)' }} />
-            <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-green)' }} />
-            <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-orange)' }} />
-            <div className="flex-1" style={{ backgroundColor: 'var(--color-wc-red)' }} />
+        <div className="text-center space-y-2.5 pb-1">
+          <div className="flex h-0.5 rounded-full overflow-hidden opacity-70" aria-hidden="true">
+            <div className="flex-1 bg-host-red" />
+            <div className="flex-1 bg-host-blue-bright" />
+            <div className="flex-1 bg-host-green" />
           </div>
-          <div className="text-[10px] text-slate-400 uppercase tracking-wider">
+          <div className="text-[10px] text-ink-500 uppercase tracking-[0.25em]">
             FastAPI · React · 2026
           </div>
         </div>
