@@ -1,8 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { CalendarDays, Timer, CalendarX } from 'lucide-react'
 import { fetchSchedule, fetchTeams } from '../api'
 import { FlagImage } from '../components/shared/FlagImage'
-import { BrandArcPattern } from '../components/shared/BrandArcPattern'
+import { PageHeader } from '../components/ui/PageHeader'
+import { GlassCard } from '../components/ui/GlassCard'
+import { CardSkeleton } from '../components/ui/Skeleton'
+import { EmptyState } from '../components/ui/EmptyState'
+import type { Accent } from '../components/ui/accents'
 import { formatLocalKickoff } from '../utils/time'
 
 const STAGE_LABELS: Record<string, string> = {
@@ -17,14 +22,15 @@ const STAGE_LABELS: Record<string, string> = {
   FINAL: 'Final',
 }
 
-const STAGE_DOTS: Record<string, string> = {
-  ROUND_OF_32: 'var(--color-wc-blue)',
-  LAST_32: 'var(--color-wc-blue)',
-  ROUND_OF_16: 'var(--color-wc-green)',
-  LAST_16: 'var(--color-wc-green)',
-  QUARTER_FINALS: 'var(--color-wc-orange)',
-  SEMI_FINALS: 'var(--color-wc-red)',
-  FINAL: 'var(--color-wc-gold)',
+// Stage → host-palette dot + card glow accent
+const STAGE_COLORS: Record<string, { dot: string; accent: Accent }> = {
+  ROUND_OF_32: { dot: 'var(--color-host-blue-bright)', accent: 'blue' },
+  LAST_32: { dot: 'var(--color-host-blue-bright)', accent: 'blue' },
+  ROUND_OF_16: { dot: 'var(--color-host-green)', accent: 'green' },
+  LAST_16: { dot: 'var(--color-host-green)', accent: 'green' },
+  QUARTER_FINALS: { dot: 'var(--color-gold)', accent: 'gold' },
+  SEMI_FINALS: { dot: 'var(--color-host-red)', accent: 'red' },
+  FINAL: { dot: 'var(--color-gold)', accent: 'gold' },
 }
 
 function stageLabel(stage?: string) {
@@ -35,9 +41,9 @@ function stageLabel(stage?: string) {
 function stagePill(stage?: string) {
   if (!stage) return null
   const label = stageLabel(stage)
-  const dot = STAGE_DOTS[stage] ?? 'var(--color-slate-400)'
+  const dot = STAGE_COLORS[stage]?.dot ?? 'var(--color-ink-500)'
   return (
-    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] text-ink-300">
       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: dot }} />
       {label}
     </span>
@@ -52,7 +58,7 @@ function Countdown({ utcDate }: { utcDate: string }) {
     return () => clearInterval(id)
   }, [utcDate])
 
-  if (diff <= 0) return <span className="text-xs font-semibold" style={{ color: 'var(--color-success)' }}>Kickoff!</span>
+  if (diff <= 0) return <span className="text-xs font-semibold text-host-green">Kickoff!</span>
 
   const s = Math.floor(diff / 1000)
   const d = Math.floor(s / 86400)
@@ -67,7 +73,7 @@ function Countdown({ utcDate }: { utcDate: string }) {
   if (d === 0) parts.push(`${sec}s`)
 
   return (
-    <span className="text-xs font-mono tabular-nums font-semibold" style={{ color: 'var(--color-warning)' }}>
+    <span className="text-xs font-mono tabular-nums font-semibold text-gold">
       {parts.join(' ')}
     </span>
   )
@@ -79,16 +85,16 @@ function ProbBars({ p_home, p_draw, p_away, home, away }: {
   return (
     <div className="space-y-1 mt-2">
       {[
-        { label: home.slice(0, 3).toUpperCase(), prob: p_home, color: 'var(--color-wc-blue)' },
-        { label: 'DRW', prob: p_draw, color: 'var(--color-slate-400)' },
-        { label: away.slice(0, 3).toUpperCase(), prob: p_away, color: 'var(--color-wc-red)' },
+        { label: home.slice(0, 3).toUpperCase(), prob: p_home, color: 'var(--color-host-blue-bright)' },
+        { label: 'DRW', prob: p_draw, color: 'var(--color-ink-500)' },
+        { label: away.slice(0, 3).toUpperCase(), prob: p_away, color: 'var(--color-host-red)' },
       ].map(({ label, prob, color }) => (
         <div key={label} className="flex items-center gap-1.5">
-          <span className="text-[10px] text-slate-500 w-7 text-right font-mono">{label}</span>
-          <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-slate-200">
+          <span className="text-[10px] text-ink-500 w-7 text-right font-mono">{label}</span>
+          <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-white/[0.07]">
             <div className="h-full rounded-full" style={{ width: `${prob * 100}%`, backgroundColor: color }} />
           </div>
-          <span className="text-[10px] text-slate-600 font-mono w-8 text-right">{(prob * 100).toFixed(0)}%</span>
+          <span className="text-[10px] text-ink-300 font-mono w-8 text-right">{(prob * 100).toFixed(0)}%</span>
         </div>
       ))}
     </div>
@@ -130,95 +136,101 @@ export function Schedule() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-48 text-slate-500 text-sm">
-        Loading fixtures…
+      <div className="stagger space-y-5">
+        <PageHeader title="Fixtures" icon={CalendarDays} subtitle="Loading upcoming matches…" />
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} lines={2} />)}
+        </div>
       </div>
     )
   }
 
   if (!grouped.length) {
     return (
-      <div className="relative overflow-hidden bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
-        <BrandArcPattern variant="full" opacity={0.1} className="absolute inset-0 w-full h-full" />
-        <div className="relative text-4xl mb-3">📅</div>
-        <div className="relative text-slate-700 font-semibold mb-1">No upcoming fixtures</div>
-        <div className="relative text-slate-500 text-sm">
-          {scheduleData && 'error' in scheduleData && (scheduleData as any).error
-            ? (scheduleData as any).error
-            : 'All scheduled matches have been played or no API key is configured.'}
-        </div>
+      <div className="stagger space-y-5">
+        <PageHeader title="Fixtures" icon={CalendarDays} />
+        <EmptyState
+          icon={CalendarX}
+          title="No upcoming fixtures"
+          hint={
+            scheduleData && 'error' in scheduleData && (scheduleData as any).error
+              ? (scheduleData as any).error
+              : 'All scheduled matches have been played or no API key is configured.'
+          }
+        />
       </div>
     )
   }
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">Fixtures</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {scheduleData?.matches.length ?? 0} upcoming matches
-            {age !== null ? ` · updated ${age}s ago` : ''}
-          </p>
-        </div>
-        <div className="flex gap-2 flex-wrap text-[10px]">
-          {[
-            ['Round of 32', 'var(--color-wc-blue)'],
-            ['Round of 16', 'var(--color-wc-green)'],
-            ['Quarter-Final', 'var(--color-wc-orange)'],
-            ['Semi-Final', 'var(--color-wc-red)'],
-            ['Final', 'var(--color-wc-gold)'],
-          ].map(([l, c]) => (
-            <span key={l} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide bg-slate-100 text-slate-600">
-              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: c }} />
-              {l}
-            </span>
-          ))}
-        </div>
-      </div>
+    <div className="stagger space-y-6">
+      <PageHeader
+        title="Fixtures"
+        icon={CalendarDays}
+        subtitle={`${scheduleData?.matches.length ?? 0} upcoming matches${age !== null ? ` · updated ${age}s ago` : ''}`}
+        actions={
+          <div className="flex gap-2 flex-wrap text-[10px] max-w-md justify-end">
+            {[
+              ['Round of 32', 'var(--color-host-blue-bright)'],
+              ['Round of 16', 'var(--color-host-green)'],
+              ['Quarter-Final', 'var(--color-gold)'],
+              ['Semi-Final', 'var(--color-host-red)'],
+              ['Final', 'var(--color-gold)'],
+            ].map(([l, c]) => (
+              <span key={l} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide bg-white/[0.06] border border-white/[0.08] text-ink-300">
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: c }} />
+                {l}
+              </span>
+            ))}
+          </div>
+        }
+      />
 
       {/* Date groups */}
       {grouped.map(([dateLabel, matches]) => (
         <div key={dateLabel}>
-          <div
-            className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2 px-1"
-            style={{ borderLeft: '3px solid var(--color-wc-gold)', paddingLeft: 8 }}
-          >
-            {dateLabel}
+          <div className="flex items-center gap-2.5 mb-3">
+            <span className="h-4 w-[3px] rounded-full bg-gold" aria-hidden="true" />
+            <span className="font-display text-xs uppercase tracking-[0.25em] text-ink-300">
+              {dateLabel}
+            </span>
           </div>
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
             {matches.map(m => {
               const hrs = m.utc_date ? hoursUntil(m.utc_date) : Infinity
               const showCountdown = hrs > 0 && hrs < 72
+              const accent = STAGE_COLORS[m.stage ?? '']?.accent ?? 'blue'
+              const isFinal = m.stage === 'FINAL'
               return (
-                <div
+                <GlassCard
                   key={m.id}
-                  className="rounded-xl p-4 flex flex-col gap-2 bg-white border border-slate-200 shadow-sm transition-shadow hover:shadow-md"
+                  hover
+                  accent={accent}
+                  className={`p-4 flex flex-col gap-2 ${isFinal ? 'border-beam' : ''}`}
                 >
                   {/* Stage + time row */}
                   <div className="flex items-center justify-between gap-2">
                     <div>{stagePill(m.stage)}</div>
-                    <span className="text-xs text-slate-500">{formatLocalKickoff(m.utc_date)}</span>
+                    <span className="text-xs text-ink-400">{formatLocalKickoff(m.utc_date)}</span>
                   </div>
 
                   {/* Teams */}
                   <div className="flex items-center justify-between gap-3 py-1">
                     <div className="flex items-center gap-2 min-w-0">
                       <FlagImage code={flags[m.home]} size={20} />
-                      <span className="text-sm font-semibold text-slate-800 truncate">{m.home}</span>
+                      <span className="text-sm font-semibold text-ink-50 truncate">{m.home}</span>
                     </div>
-                    <span className="text-xs text-slate-400 font-bold shrink-0">vs</span>
+                    <span className="font-display text-xs text-gold shrink-0">VS</span>
                     <div className="flex items-center gap-2 min-w-0 flex-row-reverse">
                       <FlagImage code={flags[m.away]} size={20} />
-                      <span className="text-sm font-semibold text-slate-800 truncate text-right">{m.away}</span>
+                      <span className="text-sm font-semibold text-ink-50 truncate text-right">{m.away}</span>
                     </div>
                   </div>
 
                   {/* Countdown */}
                   {showCountdown && (
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                      <span>⏱</span>
+                    <div className="flex items-center gap-1.5 text-xs text-ink-400">
+                      <Timer size={12} className="text-gold" />
                       <Countdown utcDate={m.utc_date} />
                     </div>
                   )}
@@ -233,7 +245,7 @@ export function Schedule() {
                       away={m.away}
                     />
                   )}
-                </div>
+                </GlassCard>
               )
             })}
           </div>
