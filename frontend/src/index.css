@@ -1,50 +1,88 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── Neutral scale — light mode ────────────────────────────────────────── */
-  --color-slate-50:  #ffffff;
-  --color-slate-100: #f7f8fa;
-  --color-slate-200: #eceef2;
-  --color-slate-300: #dde1e8;
-  --color-slate-400: #b6bdc9;
-  --color-slate-500: #8891a1;
-  --color-slate-600: #5b6474;
-  --color-slate-700: #3b4252;
-  --color-slate-800: #232838;
-  --color-slate-900: #14171f;
-  --color-slate-950: #0b0d13;
+  /* ── Typography ──────────────────────────────────────────────────────── */
+  --font-display: 'Anton', 'Archivo', sans-serif;
+  --font-sans: 'Archivo', system-ui, -apple-system, sans-serif;
 
-  /* ── Brand palette — FIFA World Cup 2026 "26" graphic, outer→inner ring ── */
-  --color-wc-blue:   #0F3FA3;
-  --color-wc-lime:   #A8D93B;
-  --color-wc-green:  #0E7A4A;
-  --color-wc-orange: #F0872E;
-  --color-wc-red:    #D3232B;
-  --color-wc-gold:       #C9962A;
-  --color-wc-gold-light: #E8B84B;
+  /* ── Ink scale — Outer Space / Dark Heather Grey base ────────────────── */
+  --color-ink-950: #141618;
+  --color-ink-900: #1b1e21;
+  --color-ink-800: #24272b;
+  --color-ink-700: #33373c;
+  --color-ink-600: #474A4A;
+  --color-ink-500: #6b7076;
+  --color-ink-400: #8b9094;
+  --color-ink-300: #a6aaae;
+  --color-ink-200: #c9cccf;
+  --color-ink-100: #e2e4e6;
+  --color-ink-50:  #f4f5f6;
 
-  /* ── Semantic colors (light-mode contrast tuned) ──────────────────────── */
-  --color-success:    #1D8A4E;
-  --color-success-bg: #E9F7EF;
-  --color-warning:    #B9720A;
-  --color-warning-bg: #FDF3E2;
-  --color-danger:     #C6242C;
-  --color-danger-bg:  #FBEAEA;
-  --color-info:       #1554B8;
-  --color-info-bg:    #EAF1FC;
+  /* ── Host-nation trio — bold, saturated ──────────────────────────────── */
+  --color-host-red:         #E61D25;
+  --color-host-blue:        #2A398D;
+  --color-host-blue-bright: #3D52C4;
+  --color-host-green:       #3CAC3B;
+
+  /* ── Luxury structural accent ────────────────────────────────────────── */
+  --color-gold:      #D4AF37;
+  --color-gold-soft: #E9CE7A;
+
+  /* ── Semantic (dark-tuned) ───────────────────────────────────────────── */
+  --color-success:    #3CAC3B;
+  --color-success-bg: rgba(60, 172, 59, 0.12);
+  --color-warning:    #E9A13B;
+  --color-warning-bg: rgba(233, 161, 59, 0.12);
+  --color-danger:     #E61D25;
+  --color-danger-bg:  rgba(230, 29, 37, 0.12);
+  --color-info:       #5B6FD6;
+  --color-info-bg:    rgba(91, 111, 214, 0.12);
 }
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
+  --glass-bg: rgba(255, 255, 255, 0.045);
+  --glass-border: rgba(255, 255, 255, 0.10);
 }
 
 body {
-  background-color: var(--color-slate-50);
-  color: var(--color-slate-800);
-  font-family: system-ui, -apple-system, sans-serif;
+  background-color: var(--color-ink-950);
+  color: var(--color-ink-50);
+  font-family: var(--font-sans);
   margin: 0;
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* ── Atmosphere: host-nation mesh blobs blended into the ink base ──────── */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 38% at 12% 8%,  rgba(230, 29, 37, 0.10),  transparent 70%),
+    radial-gradient(46% 44% at 92% 22%, rgba(61, 82, 196, 0.13),  transparent 70%),
+    radial-gradient(50% 42% at 30% 100%, rgba(60, 172, 59, 0.09), transparent 70%),
+    radial-gradient(38% 30% at 70% 78%, rgba(212, 175, 55, 0.05), transparent 70%),
+    linear-gradient(160deg, #17191c 0%, var(--color-ink-950) 55%, #101214 100%);
+}
+
+/* ── Atmosphere: fine geometric grid + gold hairline frame ──────────────── */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent 5%, rgba(212, 175, 55, 0.55) 50%, transparent 95%) top / 100% 1px no-repeat,
+    repeating-linear-gradient(0deg,  rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 72px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 72px);
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.55) 60%, rgba(0, 0, 0, 0.25) 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.55) 60%, rgba(0, 0, 0, 0.25) 100%);
 }
 
 #root {
@@ -52,13 +90,114 @@ body {
   background: transparent;
 }
 
+/* ── Motion system ───────────────────────────────────────────────────────
+   Hardware-accelerated only: opacity + transform. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position: 200% 0; }
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.82); }
+}
+
+@property --beam-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes beam-spin {
+  to { --beam-angle: 360deg; }
+}
+
+.animate-rise {
+  animation: rise 0.5s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+.stagger > * {
+  animation: rise 0.5s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+.stagger > *:nth-child(1)  { animation-delay: 0ms; }
+.stagger > *:nth-child(2)  { animation-delay: 60ms; }
+.stagger > *:nth-child(3)  { animation-delay: 120ms; }
+.stagger > *:nth-child(4)  { animation-delay: 180ms; }
+.stagger > *:nth-child(5)  { animation-delay: 240ms; }
+.stagger > *:nth-child(6)  { animation-delay: 300ms; }
+.stagger > *:nth-child(7)  { animation-delay: 360ms; }
+.stagger > *:nth-child(8)  { animation-delay: 420ms; }
+.stagger > *:nth-child(9)  { animation-delay: 480ms; }
+.stagger > *:nth-child(10) { animation-delay: 540ms; }
+.stagger > *:nth-child(n+11) { animation-delay: 600ms; }
+
+/* ── Border beam: rotating conic highlight on a 1px frame ────────────────
+   Use sparingly (hero header / primary CTA — max ~2 per view). */
+.border-beam {
+  position: relative;
+}
+.border-beam::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--beam-angle),
+    transparent 0%,
+    rgba(212, 175, 55, 0.9) 10%,
+    rgba(230, 29, 37, 0.55) 20%,
+    transparent 30%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: beam-spin 6s linear infinite;
+  pointer-events: none;
+}
+
+.shimmer {
+  background: linear-gradient(
+    100deg,
+    var(--color-ink-800) 35%,
+    var(--color-ink-700) 50%,
+    var(--color-ink-800) 65%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Accessibility ───────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* Plotly chart — transparent backgrounds */
 .js-plotly-plot .plotly .main-svg {
   background: transparent !important;
 }
 
-/* Brand-colored scrollbar */
-::-webkit-scrollbar         { width: 5px; height: 5px; }
-::-webkit-scrollbar-track   { background: var(--color-slate-200); }
-::-webkit-scrollbar-thumb   { background: var(--color-wc-blue); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--color-wc-orange); }
+/* ── Scrollbar — dark with gold hover ────────────────────────────────────── */
+::-webkit-scrollbar         { width: 6px; height: 6px; }
+::-webkit-scrollbar-track   { background: var(--color-ink-900); }
+::-webkit-scrollbar-thumb   { background: var(--color-ink-600); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-gold); }
+
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
