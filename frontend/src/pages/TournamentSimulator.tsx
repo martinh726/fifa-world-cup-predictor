@@ -1,12 +1,22 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useQueryClient } from '@tanstack/react-query'
+import {
+  Dices, Play, Trash2, Trophy, BarChart3, TrendingUp, ListOrdered, Target,
+  CircleCheck, CircleX, Ruler,
+} from 'lucide-react'
 import { fetchSimulate, fetchCalibration } from '../api'
 import type { CalibrationResponse } from '../api/types'
 import { useAppStore } from '../store/useAppStore'
 import { ChampionshipOddsBar } from '../components/charts/ChampionshipOddsBar'
 import { BracketViewer } from '../components/bracket/BracketViewer'
-import { BrandArcPattern } from '../components/shared/BrandArcPattern'
+import { PageHeader } from '../components/ui/PageHeader'
+import { GlassCard, SectionCard } from '../components/ui/GlassCard'
+import { StatCard } from '../components/ui/StatCard'
+import { Button } from '../components/ui/Button'
+import { Collapsible } from '../components/ui/Collapsible'
+import { EmptyState } from '../components/ui/EmptyState'
+import { cn } from '../utils/cn'
 import { baseLayout, CHART_COLORS, CHART_CONFIG } from '../components/charts/plotlyTheme'
 import toast from 'react-hot-toast'
 import Plot from 'react-plotly.js'
@@ -17,8 +27,8 @@ export function TournamentSimulator() {
   const [nSims, setNSims] = useState(10000)
   const [lockRealResults, setLockRealResults] = useState(true)
   const [selectedGroup, setSelectedGroup] = useState('A')
-  const [showCalibration, setShowCalibration] = useState(false)
 
+  const [showCalibration, setShowCalibration] = useState(false)
   const { data: calibData } = useQuery({
     queryKey: ['calibration'],
     queryFn: fetchCalibration,
@@ -51,21 +61,31 @@ export function TournamentSimulator() {
   const groups = lastSimResult ? Object.keys(lastSimResult.rank_probs).sort() : []
 
   return (
-    <div className="space-y-5">
-      {/* Controls */}
-      <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-4 space-y-3">
-        <div className="flex flex-wrap gap-4 items-end">
+    <div className="stagger space-y-6">
+      <PageHeader
+        title="Tournament Simulator"
+        icon={Dices}
+        subtitle="Monte-Carlo the whole tournament — group tables, knockout paths, and championship odds."
+      />
+
+      {/* Command bar */}
+      <GlassCard className="p-4 sm:p-5 space-y-3">
+        <div className="flex flex-wrap gap-x-6 gap-y-4 items-end">
           <div>
-            <label className="text-xs text-slate-500 block mb-1">Simulations</label>
-            <div className="flex gap-1">
+            <label className="text-[11px] uppercase tracking-[0.16em] font-semibold text-ink-400 block mb-2">
+              Simulations
+            </label>
+            <div className="flex rounded-xl overflow-hidden border border-[var(--glass-border)]">
               {SIM_OPTIONS.map(n => (
                 <button
                   key={n}
                   onClick={() => setNSims(n)}
-                  className={`px-3 py-1.5 rounded text-sm transition-colors ${
-                    nSims === n ? 'text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                  style={nSims === n ? { backgroundColor: 'var(--color-wc-blue)' } : undefined}
+                  className={cn(
+                    'px-3.5 py-2 min-h-10 text-[13px] font-semibold transition-colors cursor-pointer',
+                    nSims === n
+                      ? 'bg-host-blue-bright text-white'
+                      : 'bg-white/[0.04] text-ink-300 hover:bg-white/[0.09] hover:text-ink-50',
+                  )}
                 >
                   {n.toLocaleString()}
                 </button>
@@ -73,85 +93,83 @@ export function TournamentSimulator() {
             </div>
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-ink-200 cursor-pointer min-h-10">
             <input
               type="checkbox"
               checked={lockRealResults}
               onChange={e => setLockRealResults(e.target.checked)}
-              className="w-4 h-4 accent-[var(--color-wc-blue)]"
+              className="w-4 h-4 cursor-pointer"
+              style={{ accentColor: 'var(--color-gold)' }}
             />
             Lock in real results
           </label>
 
-          <button
-            onClick={handleRun}
-            disabled={isPending}
-            className="px-5 py-2 disabled:opacity-50 text-white font-semibold rounded-lg text-sm transition-opacity hover:opacity-90 shadow-sm"
-            style={{ backgroundColor: 'var(--color-wc-blue)' }}
-          >
-            {isPending ? '⏳ Simulating…' : '▶ Run simulation'}
-          </button>
+          <Button variant="primary" icon={Play} loading={isPending} onClick={handleRun}>
+            {isPending ? 'Simulating…' : 'Run simulation'}
+          </Button>
 
           {lastSimResult && (
-            <button
-              onClick={() => { clearManualResults(); handleRun() }}
+            <Button
+              variant="secondary"
+              icon={Trash2}
               disabled={isPending}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm transition-colors"
+              onClick={() => { clearManualResults(); handleRun() }}
             >
-              🗑️ Clear manual results & re-run
-            </button>
+              Clear manual & re-run
+            </Button>
           )}
         </div>
 
         {manualResults.length > 0 && (
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-ink-400">
             {manualResults.length} manual result(s) active:
             {manualResults.map(r => ` ${r.team1} ${r.score1}–${r.score2} ${r.team2}`).join(' ·')}
           </div>
         )}
-      </div>
+      </GlassCard>
 
       {!lastSimResult && !isPending && (
-        <div className="relative overflow-hidden text-slate-500 text-sm bg-white border border-slate-200 shadow-sm rounded-xl p-6 text-center">
-          <BrandArcPattern variant="full" opacity={0.1} className="absolute inset-0 w-full h-full" />
-          <span className="relative">Press <strong>Run simulation</strong> to estimate every team's chances.</span>
-        </div>
+        <EmptyState
+          icon={Dices}
+          title="No simulation yet"
+          hint="Press Run simulation to estimate every team's chances across thousands of tournaments."
+        />
       )}
 
       {lastSimResult && (
         <>
           {/* Championship odds */}
-          <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">
-              Championship odds — {lastSimResult.n_sims.toLocaleString()} sims, {lastSimResult.locked_count} results locked
-            </h3>
+          <SectionCard
+            icon={Trophy}
+            accent="gold"
+            title={`Championship odds — ${lastSimResult.n_sims.toLocaleString()} sims · ${lastSimResult.locked_count} locked`}
+          >
             <ChampionshipOddsBar summary={lastSimResult.summary} />
-          </div>
+          </SectionCard>
 
           {/* Full odds table */}
-          <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Probability of reaching each stage</h3>
+          <SectionCard icon={BarChart3} accent="green" title="Probability of reaching each stage">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-slate-500 border-b border-slate-200">
-                    <th className="text-left py-2 pr-3">Team</th>
+                  <tr className="text-ink-400 border-b border-white/[0.08] text-[11px] uppercase tracking-wider">
+                    <th className="text-left py-2 pr-3 font-semibold">Team</th>
                     {['P(R32)', 'P(R16)', 'P(QF)', 'P(SF)', 'P(Final)', 'P(Champion)'].map(c => (
-                      <th key={c} className="text-right py-2 px-2 text-xs">{c.replace('P(', '').replace(')', '')}</th>
+                      <th key={c} className="text-right py-2 px-2 font-semibold">{c.replace('P(', '').replace(')', '')}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {lastSimResult.summary.map(row => (
-                    <tr key={row.team} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="py-1.5 pr-3 text-slate-900">{row.team}</td>
+                    <tr key={row.team} className="border-b border-white/[0.05] hover:bg-white/[0.04] transition-colors">
+                      <td className="py-1.5 pr-3 text-ink-50">{row.team}</td>
                       {['P(R32)', 'P(R16)', 'P(QF)', 'P(SF)', 'P(Final)', 'P(Champion)'].map(c => {
                         const v = (row as any)[c] as number
                         return (
                           <td
                             key={c}
-                            className="text-right px-2 py-1.5 font-mono text-xs text-slate-800 rounded"
-                            style={{ backgroundColor: `rgba(29,138,78,${(v * 0.5 + 0.04).toFixed(2)})` }}
+                            className="text-right px-2 py-1.5 font-mono text-xs text-ink-50 rounded"
+                            style={{ backgroundColor: `rgba(60,172,59,${(v * 0.45 + 0.03).toFixed(2)})` }}
                           >
                             {(v * 100).toFixed(1)}%
                           </td>
@@ -162,47 +180,51 @@ export function TournamentSimulator() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </SectionCard>
 
           {/* Championship odds trend */}
           {oddsHistory.length >= 2 && (
-            <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold text-slate-700">📈 Championship odds trend across runs</h3>
-                <button onClick={clearOddsHistory} className="text-xs text-slate-400 transition-colors hover:text-slate-700">
-                  🗑️ Clear
-                </button>
-              </div>
+            <SectionCard
+              icon={TrendingUp}
+              accent="blue"
+              title="Championship odds trend across runs"
+              actions={
+                <Button variant="ghost" size="sm" icon={Trash2} onClick={clearOddsHistory}>
+                  Clear
+                </Button>
+              }
+            >
               <OddsTrendChart oddsHistory={oddsHistory} summary={lastSimResult.summary} />
-            </div>
+            </SectionCard>
           )}
 
           {/* Group finishing positions */}
-          <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Group finishing positions</h3>
-            <select
-              value={selectedGroup}
-              onChange={e => setSelectedGroup(e.target.value)}
-              className="bg-white border border-slate-300 rounded px-3 py-1.5 text-sm text-slate-800 mb-3 transition-colors focus:outline-none focus:border-[var(--color-wc-blue)]"
-            >
-              {groups.map(g => <option key={g} value={g}>Group {g}</option>)}
-            </select>
+          <SectionCard icon={ListOrdered} accent="blue" title="Group finishing positions">
+            <div className="relative inline-block mb-3">
+              <select
+                value={selectedGroup}
+                onChange={e => setSelectedGroup(e.target.value)}
+                className="bg-white/[0.05] border border-[var(--glass-border)] rounded-xl px-3.5 py-2 min-h-10 pr-8 text-sm text-ink-50 transition-colors focus:outline-none focus:border-gold/60 appearance-none cursor-pointer"
+              >
+                {groups.map(g => <option key={g} value={g} className="bg-ink-900">Group {g}</option>)}
+              </select>
+            </div>
             {lastSimResult.rank_probs[selectedGroup] && (
               <table className="text-sm w-full">
                 <thead>
-                  <tr className="text-slate-500 border-b border-slate-200">
-                    <th className="text-left py-1">Team</th>
+                  <tr className="text-ink-400 border-b border-white/[0.08] text-[11px] uppercase tracking-wider">
+                    <th className="text-left py-1.5 font-semibold">Team</th>
                     {['P(1st)', 'P(2nd)', 'P(3rd)', 'P(4th)'].map(c => (
-                      <th key={c} className="text-right py-1 px-2 text-xs">{c}</th>
+                      <th key={c} className="text-right py-1.5 px-2 font-semibold">{c}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {Object.entries(lastSimResult.rank_probs[selectedGroup]).map(([team, probs]) => (
-                    <tr key={team} className="border-b border-slate-100">
-                      <td className="py-1 text-slate-900">{team}</td>
+                    <tr key={team} className="border-b border-white/[0.05]">
+                      <td className="py-1.5 text-ink-50">{team}</td>
                       {['P(1st)', 'P(2nd)', 'P(3rd)', 'P(4th)'].map(c => (
-                        <td key={c} className="text-right px-2 py-1 text-xs font-mono text-slate-700">
+                        <td key={c} className="text-right px-2 py-1.5 text-xs font-mono text-ink-200">
                           {((probs[c] ?? 0) * 100).toFixed(1)}%
                         </td>
                       ))}
@@ -211,88 +233,92 @@ export function TournamentSimulator() {
                 </tbody>
               </table>
             )}
-          </div>
+          </SectionCard>
 
           {/* Bracket */}
-          <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">🏟️ Simulated Bracket</h3>
+          <SectionCard icon={Trophy} accent="gold" title="Simulated bracket">
             <BracketViewer type="simulated" />
-          </div>
+          </SectionCard>
 
           {/* Accuracy */}
           {lastSimResult.accuracy.total > 0 && (
-            <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">🎯 Prediction accuracy on completed matches</h3>
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="bg-slate-100 rounded-lg p-3">
-                  <div className="text-xs text-slate-500">Correct outcomes</div>
-                  <div className="text-xl font-bold text-slate-900">
-                    {lastSimResult.accuracy.correct} / {lastSimResult.accuracy.total}
-                  </div>
-                </div>
-                <div className="bg-slate-100 rounded-lg p-3">
-                  <div className="text-xs text-slate-500">Accuracy</div>
-                  <div className="text-xl font-bold" style={{ color: 'var(--color-success)' }}>
-                    {(lastSimResult.accuracy.accuracy * 100).toFixed(0)}%
-                  </div>
-                </div>
-                <div className="bg-slate-100 rounded-lg p-3">
-                  <div className="text-xs text-slate-500">Brier score</div>
-                  <div className="text-xl font-bold text-slate-900">
-                    {lastSimResult.accuracy.brier.toFixed(3)}
-                  </div>
-                  <div className="text-xs text-slate-400">lower = better</div>
-                </div>
+            <SectionCard icon={Target} accent="red" title="Prediction accuracy on completed matches">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                <StatCard
+                  label="Correct outcomes"
+                  value={`${lastSimResult.accuracy.correct} / ${lastSimResult.accuracy.total}`}
+                  accent="neutral"
+                />
+                <StatCard
+                  label="Accuracy"
+                  value={`${(lastSimResult.accuracy.accuracy * 100).toFixed(0)}%`}
+                  accent="green"
+                />
+                <StatCard
+                  label="Brier score"
+                  value={lastSimResult.accuracy.brier.toFixed(3)}
+                  sub="lower = better"
+                  accent="gold"
+                />
               </div>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-slate-500 border-b border-slate-200">
-                    <th className="text-left py-1">Match</th>
-                    <th className="py-1">Score</th>
-                    <th className="py-1">Pred</th>
-                    <th className="py-1">Act</th>
-                    <th className="py-1">✓</th>
-                    <th className="py-1">P(H)</th>
-                    <th className="py-1">P(D)</th>
-                    <th className="py-1">P(A)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lastSimResult.accuracy.matches.map((m, i) => (
-                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="py-1 text-slate-700">{m.match}</td>
-                      <td className="py-1 text-center text-slate-500">{m.score}</td>
-                      <td className="py-1 text-center text-slate-700">{m.predicted}</td>
-                      <td className="py-1 text-center text-slate-700">{m.actual}</td>
-                      <td className="py-1 text-center">{m.correct ? '✅' : '❌'}</td>
-                      <td className="py-1 text-center font-medium" style={{ color: 'var(--color-wc-blue)' }}>{(m.p_home * 100).toFixed(0)}%</td>
-                      <td className="py-1 text-center text-slate-500">{(m.p_draw * 100).toFixed(0)}%</td>
-                      <td className="py-1 text-center font-medium" style={{ color: 'var(--color-wc-red)' }}>{(m.p_away * 100).toFixed(0)}%</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-ink-400 border-b border-white/[0.08] text-[10px] uppercase tracking-wider">
+                      <th className="text-left py-1.5 font-semibold">Match</th>
+                      <th className="py-1.5 font-semibold">Score</th>
+                      <th className="py-1.5 font-semibold">Pred</th>
+                      <th className="py-1.5 font-semibold">Act</th>
+                      <th className="py-1.5 font-semibold">Hit</th>
+                      <th className="py-1.5 font-semibold">P(H)</th>
+                      <th className="py-1.5 font-semibold">P(D)</th>
+                      <th className="py-1.5 font-semibold">P(A)</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {lastSimResult.accuracy.matches.map((m, i) => (
+                      <tr key={i} className="border-b border-white/[0.05] hover:bg-white/[0.04] transition-colors">
+                        <td className="py-1.5 text-ink-200">{m.match}</td>
+                        <td className="py-1.5 text-center text-ink-400">{m.score}</td>
+                        <td className="py-1.5 text-center text-ink-200">{m.predicted}</td>
+                        <td className="py-1.5 text-center text-ink-200">{m.actual}</td>
+                        <td className="py-1.5">
+                          <span className="grid place-items-center">
+                            {m.correct
+                              ? <CircleCheck size={14} className="text-host-green" />
+                              : <CircleX size={14} className="text-host-red" />}
+                          </span>
+                        </td>
+                        <td className="py-1.5 text-center font-medium text-host-blue-bright">{(m.p_home * 100).toFixed(0)}%</td>
+                        <td className="py-1.5 text-center text-ink-400">{(m.p_draw * 100).toFixed(0)}%</td>
+                        <td className="py-1.5 text-center font-medium text-host-red">{(m.p_away * 100).toFixed(0)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
           )}
         </>
       )}
 
       {/* Model calibration — always visible, loads on demand */}
-      <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
-        <button
-          onClick={() => setShowCalibration(v => !v)}
-          className="w-full flex items-center justify-between text-sm font-semibold text-slate-700"
-        >
-          <span>📐 Model calibration (reliability diagram)</span>
-          <span className="text-slate-400 text-xs">{showCalibration ? '▲ hide' : '▼ show'}</span>
-        </button>
+      <Collapsible title="Model calibration (reliability diagram)" icon={Ruler} accent="gold">
+        {!showCalibration && (
+          <Button variant="secondary" size="sm" onClick={() => setShowCalibration(true)}>
+            Compute calibration
+          </Button>
+        )}
         {showCalibration && calibData && calibData.n_matches > 0 && (
           <CalibrationSection data={calibData} />
         )}
         {showCalibration && calibData && calibData.n_matches === 0 && (
-          <p className="text-slate-500 text-sm mt-3">No completed matches to compute calibration from.</p>
+          <p className="text-ink-400 text-sm">No completed matches to compute calibration from.</p>
         )}
-      </div>
+        {showCalibration && !calibData && (
+          <p className="text-ink-400 text-sm">Loading calibration…</p>
+        )}
+      </Collapsible>
     </div>
   )
 }
@@ -322,7 +348,7 @@ function CalibrationSection({ data }: { data: CalibrationResponse }) {
     name: 'Perfect calibration',
     x: [0, 1],
     y: [0, 1],
-    line: { color: '#C9962A', width: 1.5, dash: 'dash' as const },
+    line: { color: CHART_COLORS.gold, width: 1.5, dash: 'dash' as const },
     hoverinfo: 'skip' as const,
   }
 
@@ -331,23 +357,23 @@ function CalibrationSection({ data }: { data: CalibrationResponse }) {
     name: 'Match count',
     x: data.confidence_distribution.bin_centers,
     y: data.confidence_distribution.counts,
-    marker: { color: 'rgba(15,63,163,0.15)', line: { color: 'rgba(15,63,163,0.4)', width: 1 } },
+    marker: { color: 'rgba(61,82,196,0.20)', line: { color: 'rgba(61,82,196,0.5)', width: 1 } },
     hovertemplate: 'Confidence: %{x:.0%}<br>Matches: %{y}<extra></extra>',
     yaxis: 'y2',
     showlegend: false,
   }
 
   return (
-    <div className="mt-4 space-y-4">
-      <div className="grid grid-cols-3 gap-3">
+    <div className="mt-2 space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {Object.entries(data.brier).map(([label, score]) => (
-          <div key={label} className="bg-slate-100 rounded-lg p-3">
-            <div className="text-xs text-slate-500">{label} Brier</div>
-            <div className="text-lg font-bold" style={{ color: COLORS[label] ?? 'var(--color-slate-800)' }}>
-              {score.toFixed(3)}
-            </div>
-            <div className="text-[10px] text-slate-400">lower = better</div>
-          </div>
+          <StatCard
+            key={label}
+            label={`${label} Brier`}
+            value={score.toFixed(3)}
+            sub="lower = better"
+            valueColor={COLORS[label] ?? 'var(--color-ink-50)'}
+          />
         ))}
       </div>
 
@@ -383,7 +409,7 @@ function CalibrationSection({ data }: { data: CalibrationResponse }) {
         config={CHART_CONFIG}
         style={{ width: '100%' }}
       />
-      <p className="text-[10px] text-slate-500">
+      <p className="text-[10px] text-ink-400">
         Based on {data.n_matches} completed group-stage matches. Points above the dashed line = model
         under-confident; below = over-confident. Bars show how often the model assigns each confidence level.
       </p>
@@ -398,7 +424,7 @@ function OddsTrendChart({
   summary: { team: string }[]
 }) {
   const topTeams = summary.slice(0, 8).map(r => r.team)
-  const colors = [...CHART_COLORS.categorical, '#7c3aed', '#0e7490', '#db2777']
+  const colors = [...CHART_COLORS.categorical, '#E9A13B', '#5B6FD6', '#E9CE7A']
   return (
     <Plot
       data={topTeams.map((team, i) => ({
