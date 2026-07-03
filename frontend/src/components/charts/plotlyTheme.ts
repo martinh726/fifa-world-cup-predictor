@@ -1,27 +1,29 @@
 import type { Layout } from 'plotly.js'
 
-// Literal resolved hex values — Plotly's SVG renderer doesn't reliably resolve
-// CSS custom properties, so this file is the single source of truth instead.
+// Literal resolved hex/rgba values — Plotly's SVG renderer doesn't reliably
+// resolve CSS custom properties, so this file is the single source of truth.
+// Dark cinematic theme: host-nation trio + gold on Outer Space ink.
 export const CHART_COLORS = {
-  home: '#0F3FA3',
-  draw: '#8891a1',
-  away: '#D3232B',
-  success: '#1D8A4E',
-  warning: '#B9720A',
-  danger: '#C6242C',
-  categorical: ['#0F3FA3', '#A8D93B', '#0E7A4A', '#F0872E', '#D3232B'],
-  text: '#3b4252',
-  textMuted: '#5b6474',
-  grid: '#eceef2',
-  line: '#dde1e8',
-  cardBg: '#ffffff',
+  home: '#3D52C4',        // host blue (bright variant — #2A398D is illegible on dark)
+  draw: '#8b9094',
+  away: '#E61D25',        // Torch Red
+  success: '#3CAC3B',     // Average Green
+  warning: '#E9A13B',
+  danger: '#E61D25',
+  gold: '#D4AF37',
+  categorical: ['#3D52C4', '#E61D25', '#3CAC3B', '#D4AF37', '#f4f5f6'],
+  text: '#f4f5f6',
+  textMuted: '#8b9094',
+  grid: 'rgba(255,255,255,0.07)',
+  line: 'rgba(255,255,255,0.14)',
+  cardBg: '#1b1e21',
 }
 
 export function baseLayout(overrides: Partial<Layout> = {}): Partial<Layout> {
   return {
     paper_bgcolor: 'transparent',
     plot_bgcolor: 'transparent',
-    font: { color: CHART_COLORS.text, size: 12, family: 'system-ui, -apple-system, sans-serif' },
+    font: { color: CHART_COLORS.text, size: 12, family: "'Archivo', system-ui, sans-serif" },
     xaxis: {
       color: CHART_COLORS.textMuted,
       gridcolor: CHART_COLORS.grid,

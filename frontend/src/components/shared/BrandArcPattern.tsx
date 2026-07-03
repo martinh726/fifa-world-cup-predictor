@@ -1,12 +1,13 @@
 import { useId } from 'react'
 
-// Concentric ring sweep echoing the FIFA World Cup 2026 "26" graphic: blue → lime → green → orange → red
+// Concentric ring sweep echoing the FIFA World Cup 2026 "26" graphic —
+// host-nation trio framed by gold and white
 const RING_COLORS = [
-  'var(--color-wc-blue)',
-  'var(--color-wc-lime)',
-  'var(--color-wc-green)',
-  'var(--color-wc-orange)',
-  'var(--color-wc-red)',
+  'var(--color-host-red)',
+  'var(--color-host-blue-bright)',
+  'var(--color-host-green)',
+  'var(--color-gold)',
+  'rgba(255,255,255,0.65)',
 ]
 
 interface BrandArcPatternProps {

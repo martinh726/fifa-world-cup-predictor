@@ -11,7 +11,7 @@ interface Props {
 
 export function WinProbTimeline({ points, home, away }: Props) {
   if (points.length === 0) {
-    return <div className="text-slate-500 text-sm py-4">Building timeline…</div>
+    return <div className="text-ink-400 text-sm py-4">Building timeline…</div>
   }
 
   const minutes = points.map(p => p.minute)
@@ -29,7 +29,7 @@ export function WinProbTimeline({ points, home, away }: Props) {
   return (
     <div>
       {!hasLine && (
-        <div className="text-slate-500 text-xs mb-1">
+        <div className="text-ink-400 text-xs mb-1">
           Snapshot at {minutes[0]}′ — chart builds as the match progresses
         </div>
       )}

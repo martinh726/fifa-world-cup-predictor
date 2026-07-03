@@ -43,8 +43,8 @@ interface SingleTeamProps {
 
 export function SingleTeamOddsBar({ odds }: SingleTeamProps) {
   const stages = ['P(R32)', 'P(R16)', 'P(QF)', 'P(SF)', 'P(Final)', 'P(Champion)']
-  const labels = ['R32', 'R16', 'QF', 'SF', 'Final', '🏆 Champion']
-  const colors = [...CHART_COLORS.categorical, CHART_COLORS.success]
+  const labels = ['R32', 'R16', 'QF', 'SF', 'Final', 'Champion']
+  const colors = [...CHART_COLORS.categorical, CHART_COLORS.gold]
   const values = stages.map(s => odds[s] ?? 0)
 
   return (

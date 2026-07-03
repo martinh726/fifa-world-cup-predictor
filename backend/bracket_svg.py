@@ -44,7 +44,15 @@ def render_bracket_svg(bracket: dict, flags: dict) -> str:
     xR = [x_fin + CW + 20 + GAP + i * STEP for i in range(4)]
     canvas_w = xR[3] + CW + PAD
 
-    LC = "#b6bdc9"
+    # Dark cinematic theme (matches frontend ink palette)
+    LC = "#474A4A"          # connector lines — Dark Heather Grey
+    BG = "#1b1e21"          # canvas
+    CARD_BG = "#24272b"     # card fill
+    CARD_STROKE = "#3a3e42" # card border
+    WIN_BG = "#3CAC3B"      # winner row — host green
+    TXT = "#f4f5f6"
+    TXT_MUTED = "#8b9094"
+    GOLD = "#D4AF37"
 
     def ln(x1, y1, x2, y2):
         return (f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}"'
@@ -80,8 +88,8 @@ def render_bracket_svg(bracket: dict, flags: dict) -> str:
         def row(t, ry, is_win):
             clean = t.rstrip("*")
             code  = flags.get(clean, "")
-            bg = "#1D8A4E" if is_win else "#f7f8fa"
-            tc = "#ffffff" if is_win else ("#3b4252" if code else "#8891a1")
+            bg = WIN_BG if is_win else CARD_BG
+            tc = "#ffffff" if is_win else (TXT if code else TXT_MUTED)
             parts = []
             if is_win:
                 parts.append(f'<rect x="{x:.1f}" y="{ry:.1f}" width="{CW}" height="{RH}" fill="{bg}"/>')
@@ -105,12 +113,12 @@ def render_bracket_svg(bracket: dict, flags: dict) -> str:
         sep_y = y + RH
         upset = prob is not None and not actual and 0 < prob < 0.60
         badge = (f'<text x="{x+CW-3:.1f}" y="{y+11:.1f}" text-anchor="end" '
-                 f'font-size="9" fill="#B9720A">⚡</text>') if upset else ""
+                 f'font-size="9" fill="{GOLD}">⚡</text>') if upset else ""
         return (f'<rect x="{x:.1f}" y="{y:.1f}" width="{CW}" height="{CH}"'
-                f' rx="4" fill="#f7f8fa" stroke="#dde1e8" stroke-width="1"/>'
+                f' rx="4" fill="{CARD_BG}" stroke="{CARD_STROKE}" stroke-width="1"/>'
                 + row(t1, y, w1) + badge
                 + f'<line x1="{x:.1f}" y1="{sep_y:.1f}" x2="{x+CW:.1f}" y2="{sep_y:.1f}"'
-                  f' stroke="#dde1e8" stroke-width="1"/>'
+                  f' stroke="{CARD_STROKE}" stroke-width="1"/>'
                 + row(t2, y + RH + SEP, w2))
 
     elems = [
@@ -140,10 +148,10 @@ def render_bracket_svg(bracket: dict, flags: dict) -> str:
         (xR[0]+CW/2, "SF"), (xR[1]+CW/2, "QF"), (xR[2]+CW/2, "R16"), (xR[3]+CW/2, "R32"),
     ]:
         elems.append(f'<text x="{lx:.1f}" y="{ly}" text-anchor="middle"'
-                     f' fill="#5b6474" font-size="10" font-family="Arial,sans-serif">{label}</text>')
+                     f' fill="{TXT_MUTED}" font-size="10" font-family="Arial,sans-serif">{label}</text>')
 
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{canvas_w:.0f}" height="{canvas_h:.0f}">'
-            f'<rect width="100%" height="100%" fill="#ffffff"/>'
+            f'<rect width="100%" height="100%" fill="{BG}"/>'
             + "".join(elems) + '</svg>')
 
 
