@@ -1,7 +1,11 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { WandSparkles, Lock, Medal, GitBranch, ListOrdered, RotateCcw, CircleCheck, CircleX } from 'lucide-react'
 import { fetchResults, fetchTeams, fetchWhatIf } from '../api'
 import { FlagImage } from '../components/shared/FlagImage'
+import { PageHeader } from '../components/ui/PageHeader'
+import { GlassCard } from '../components/ui/GlassCard'
+import { Button } from '../components/ui/Button'
 import type {
   GroupStanding, R32Projection, StandingTeam, ThirdPlaceTeam, WhatIfResponse,
 } from '../api/types'
@@ -9,21 +13,17 @@ import type {
 // ─── Score stepper ────────────────────────────────────────────────────────────
 
 function ScoreStepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const btn =
+    'w-7 h-7 sm:w-6 sm:h-6 rounded-md bg-white/[0.07] border border-white/[0.08] hover:bg-white/[0.14] active:scale-90 text-ink-100 font-bold text-sm select-none transition-[background-color,transform] cursor-pointer grid place-items-center'
   return (
     <div className="flex items-center gap-1">
-      <button
-        onClick={() => onChange(Math.max(0, value - 1))}
-        className="w-6 h-6 rounded bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-800 font-bold text-sm select-none transition-colors"
-      >
+      <button onClick={() => onChange(Math.max(0, value - 1))} className={btn} aria-label="Decrease">
         −
       </button>
-      <span className="w-5 text-center font-mono font-bold text-slate-900 text-sm tabular-nums">
+      <span className="w-5 text-center font-mono font-bold text-gold text-sm tabular-nums">
         {value}
       </span>
-      <button
-        onClick={() => onChange(Math.min(15, value + 1))}
-        className="w-6 h-6 rounded bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-slate-800 font-bold text-sm select-none transition-colors"
-      >
+      <button onClick={() => onChange(Math.min(15, value + 1))} className={btn} aria-label="Increase">
         +
       </button>
     </div>
@@ -33,8 +33,8 @@ function ScoreStepper({ value, onChange }: { value: number; onChange: (v: number
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function statusDot(t: StandingTeam) {
-  if (t.status === 'through') return <span title={t.message} style={{ color: 'var(--color-success)' }}>✓</span>
-  if (t.status === 'eliminated') return <span title={t.message} style={{ color: 'var(--color-danger)' }}>✗</span>
+  if (t.status === 'through') return <CircleCheck size={12} className="text-host-green inline" aria-label={t.message} />
+  if (t.status === 'eliminated') return <CircleX size={12} className="text-host-red inline" aria-label={t.message} />
   return null
 }
 
@@ -52,65 +52,61 @@ function WhatIfGroupCard({
   isAffected: boolean
 }) {
   return (
-    <div
-      className={`bg-white border border-slate-200 shadow-sm rounded-xl p-4 ${
-        isAffected ? 'ring-1 ring-[var(--color-wc-blue)]/40' : ''
-      }`}
+    <GlassCard
+      className={`p-4 ${isAffected ? 'ring-1 ring-gold/50 shadow-[0_0_28px_-8px_rgba(212,175,55,0.35)]' : ''}`}
     >
-      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+      <div className="font-display text-sm uppercase tracking-[0.14em] text-gold mb-2.5 flex items-center gap-2">
         Group {letter}
         {isAffected && (
-          <span className="text-xs normal-case tracking-normal font-normal" style={{ color: 'var(--color-wc-blue)' }}>
+          <span className="text-[10px] normal-case tracking-normal font-sans font-semibold text-gold-soft">
             — scenario applied
           </span>
         )}
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-slate-500 border-b border-slate-200">
-            <th className="text-left py-0.5">#</th>
-            <th className="text-left py-0.5">Team</th>
-            <th className="text-right py-0.5 px-1">Pts</th>
-            <th className="text-right py-0.5 px-1">GD</th>
-            <th className="text-right py-0.5 px-1">GF</th>
-            <th className="py-0.5 w-5" />
+          <tr className="text-ink-400 border-b border-white/[0.08] text-[10px] uppercase tracking-wider">
+            <th className="text-left py-1 font-semibold">#</th>
+            <th className="text-left py-1 font-semibold">Team</th>
+            <th className="text-right py-1 px-1 font-semibold">Pts</th>
+            <th className="text-right py-1 px-1 font-semibold">GD</th>
+            <th className="text-right py-1 px-1 font-semibold">GF</th>
+            <th className="py-1 w-5" />
           </tr>
         </thead>
         <tbody>
           {gdata.teams.map(t => (
             <tr
               key={t.team}
-              className={`border-b border-slate-100 ${
-                t.rank <= 2 ? 'text-slate-900' : 'text-slate-500'
-              }`}
+              className={`border-b border-white/[0.05] ${t.rank <= 2 ? 'text-ink-50' : 'text-ink-500'}`}
             >
-              <td className="py-0.5 text-slate-400 pr-1">{t.rank}</td>
-              <td className="py-0.5">
+              <td className="py-1 text-ink-500 pr-1">{t.rank}</td>
+              <td className="py-1">
                 <FlagImage code={flags[t.team]} size={12} />{' '}
                 {t.team}
               </td>
-              <td className="text-right py-0.5 px-1 font-bold">{t.pts}</td>
-              <td className="text-right py-0.5 px-1">
+              <td className="text-right py-1 px-1 font-bold">{t.pts}</td>
+              <td className="text-right py-1 px-1">
                 {t.gd > 0 ? '+' : ''}
                 {t.gd}
               </td>
-              <td className="text-right py-0.5 px-1">{t.gf}</td>
-              <td className="text-center py-0.5">{statusDot(t)}</td>
+              <td className="text-right py-1 px-1">{t.gf}</td>
+              <td className="text-center py-1">{statusDot(t)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </GlassCard>
   )
 }
 
 function WhatIfThirds({ thirds, flags }: { thirds: ThirdPlaceTeam[]; flags: Record<string, string> }) {
   if (!thirds.length)
-    return <div className="text-slate-500 text-sm">No group matches recorded yet.</div>
+    return <div className="text-ink-400 text-sm">No group matches recorded yet.</div>
 
   return (
-    <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
-      <p className="text-xs text-slate-500 mb-3">
+    <GlassCard className="p-4">
+      <p className="text-xs text-ink-400 mb-3">
         Top 8 advance to R32 · Pts → GD → GF · Light bar = max pts with games remaining
       </p>
       <div className="space-y-1.5">
@@ -123,38 +119,38 @@ function WhatIfThirds({ thirds, flags }: { thirds: ThirdPlaceTeam[]; flags: Reco
             <Fragment key={r.team}>
               {idx === 8 && (
                 <div className="flex items-center gap-2 my-2">
-                  <div className="flex-1 border-t border-dashed border-[var(--color-danger)]/40" />
-                  <span className="text-xs whitespace-nowrap px-1" style={{ color: 'var(--color-danger)' }}>
+                  <div className="flex-1 border-t border-dashed border-host-red/40" />
+                  <span className="text-xs whitespace-nowrap px-1 text-host-red uppercase tracking-wider">
                     cutoff — top 8 advance
                   </span>
-                  <div className="flex-1 border-t border-dashed border-[var(--color-danger)]/40" />
+                  <div className="flex-1 border-t border-dashed border-host-red/40" />
                 </div>
               )}
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-400 w-5 text-right shrink-0">{idx + 1}</span>
-                <span className="text-slate-500 w-4 shrink-0">{r.group}</span>
+                <span className="text-ink-500 w-5 text-right shrink-0">{idx + 1}</span>
+                <span className="text-ink-500 w-4 shrink-0">{r.group}</span>
                 <div className="flex items-center gap-1 w-28 shrink-0">
                   <FlagImage code={flags[r.team]} size={12} />
-                  <span className={`truncate ${isTop8 ? 'text-slate-900 font-medium' : 'text-slate-500'}`}>
+                  <span className={`truncate ${isTop8 ? 'text-ink-50 font-medium' : 'text-ink-500'}`}>
                     {r.team}
                   </span>
                 </div>
-                <div className="flex-1 relative h-4 bg-slate-200 rounded overflow-hidden">
+                <div className="flex-1 relative h-4 bg-white/[0.06] rounded overflow-hidden">
                   {!r.group_done && maxPct > barPct && (
                     <div
-                      className="absolute inset-y-0 left-0 bg-[var(--color-wc-blue)]/20 rounded"
+                      className="absolute inset-y-0 left-0 bg-host-blue-bright/20 rounded"
                       style={{ width: `${maxPct}%` }}
                     />
                   )}
                   <div
-                    className={`absolute inset-y-0 left-0 rounded ${isTop8 ? 'bg-[var(--color-wc-blue)]' : 'bg-slate-400'}`}
+                    className={`absolute inset-y-0 left-0 rounded ${isTop8 ? 'bg-host-blue-bright' : 'bg-ink-500'}`}
                     style={{ width: `${barPct}%` }}
                   />
                 </div>
-                <span className={`w-6 text-right font-bold shrink-0 ${isTop8 ? 'text-slate-900' : 'text-slate-500'}`}>
+                <span className={`w-6 text-right font-bold shrink-0 ${isTop8 ? 'text-ink-50' : 'text-ink-500'}`}>
                   {r.pts}
                 </span>
-                <span className="text-slate-400 shrink-0 w-16 text-right">
+                <span className="text-ink-500 shrink-0 w-16 text-right">
                   {r.gd > 0 ? '+' : ''}
                   {r.gd} GD
                 </span>
@@ -163,39 +159,39 @@ function WhatIfThirds({ thirds, flags }: { thirds: ThirdPlaceTeam[]; flags: Reco
           )
         })}
       </div>
-    </div>
+    </GlassCard>
   )
 }
 
 function WhatIfR32({ projections, flags }: { projections: R32Projection[]; flags: Record<string, string> }) {
   if (!projections.length)
-    return <div className="text-slate-500 text-sm">No R32 data available.</div>
+    return <div className="text-ink-400 text-sm">No R32 data available.</div>
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
       {projections.map(m => (
-        <div key={m.match} className="bg-white border border-slate-200 shadow-sm rounded-lg p-3 flex items-center gap-3 text-xs">
-          <span className="text-slate-400 w-10 shrink-0 font-mono">M{m.match}</span>
+        <GlassCard key={m.match} hover accent="blue" className="p-3 flex items-center gap-3 text-xs rounded-xl">
+          <span className="text-ink-500 w-10 shrink-0 font-mono">M{m.match}</span>
           <div className="flex-1 truncate">
             {m.team1 ? (
-              <span className="text-slate-900 font-medium">
+              <span className="text-ink-50 font-medium">
                 <FlagImage code={flags[m.team1]} size={12} /> {m.team1}
               </span>
             ) : (
-              <span className="text-slate-400 italic">{m.note1}</span>
+              <span className="text-ink-500 italic">{m.note1}</span>
             )}
           </div>
-          <span className="text-slate-400 shrink-0">vs</span>
+          <span className="text-ink-500 shrink-0 uppercase">vs</span>
           <div className="flex-1 truncate text-right">
             {m.team2 ? (
-              <span className="text-slate-900 font-medium">
+              <span className="text-ink-50 font-medium">
                 {m.team2} <FlagImage code={flags[m.team2]} size={12} />
               </span>
             ) : (
-              <span className="text-slate-400 italic">{m.note2}</span>
+              <span className="text-ink-500 italic">{m.note2}</span>
             )}
           </div>
-        </div>
+        </GlassCard>
       ))}
     </div>
   )
@@ -267,7 +263,7 @@ export function ScenarioBuilder() {
     const key = `${t1}|${t2}`
     setScenarios(prev => ({
       ...prev,
-      [key]: { score1: 0, score2: 0, ...prev[key], [field]: v },
+      [key]: { ...(prev[key] ?? { score1: 0, score2: 0 }), [field]: v },
     }))
   }
 
@@ -299,48 +295,42 @@ export function ScenarioBuilder() {
   const allGroupsComplete = Object.keys(fixturesByGroup).length === 0
 
   return (
-    <div className="space-y-5 max-w-6xl">
-      {/* Header */}
-      <div>
-        <h2 className="text-lg font-bold text-slate-900">Scenario Builder</h2>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Set hypothetical scores for unplayed group matches to see how standings, the
-          third-place race, and the R32 bracket would look. Played matches are locked.
-        </p>
-      </div>
+    <div className="stagger space-y-6">
+      <PageHeader
+        title="Scenario Builder"
+        icon={WandSparkles}
+        subtitle="Set hypothetical scores for unplayed group matches to see how standings, the third-place race, and the R32 bracket would look. Played matches are locked."
+      />
 
       {allGroupsComplete ? (
-        <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-6 text-center text-slate-500">
+        <GlassCard className="p-6 text-center text-ink-400">
           All group-stage matches have been played — the bracket is set.
-        </div>
+        </GlassCard>
       ) : (
         <>
           {/* Fixture editor grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {Object.entries(fixturesByGroup)
               .sort(([a], [b]) => a.localeCompare(b))
               .map(([group, data]) => (
-                <div key={group} className="bg-white border border-slate-200 shadow-sm rounded-xl p-4">
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                <GlassCard key={group} className="p-4">
+                  <div className="font-display text-sm uppercase tracking-[0.14em] text-gold mb-3">
                     Group {group}
                   </div>
 
                   {/* Played — locked display */}
                   {data.played.map((r, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 py-1.5 text-xs"
-                    >
+                    <div key={i} className="flex items-center gap-2 py-1.5 text-xs">
                       <div className="flex items-center gap-1 flex-1 min-w-0">
                         <FlagImage code={flags[r.team1]} size={12} />
-                        <span className="text-slate-400 truncate">{r.team1}</span>
+                        <span className="text-ink-500 truncate">{r.team1}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0 font-mono font-bold text-slate-400 text-xs">
+                      <div className="flex items-center gap-1.5 shrink-0 font-mono font-bold text-ink-500 text-xs">
                         {r.score1} – {r.score2}
-                        <span className="text-slate-300 text-xs">🔒</span>
+                        <Lock size={10} className="text-ink-600" />
                       </div>
                       <div className="flex items-center gap-1 flex-1 min-w-0 justify-end">
-                        <span className="text-slate-400 truncate">{r.team2}</span>
+                        <span className="text-ink-500 truncate">{r.team2}</span>
                         <FlagImage code={flags[r.team2]} size={12} />
                       </div>
                     </div>
@@ -354,49 +344,51 @@ export function ScenarioBuilder() {
                       <div key={key} className="flex items-center gap-2 py-1.5">
                         <div className="flex items-center gap-1 flex-1 min-w-0">
                           <FlagImage code={flags[team1]} size={12} />
-                          <span className="text-slate-900 text-xs truncate">{team1}</span>
+                          <span className="text-ink-50 text-xs truncate">{team1}</span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <ScoreStepper
                             value={sc.score1}
                             onChange={v => setScore(team1, team2, 'score1', v)}
                           />
-                          <span className="text-slate-400 text-xs px-0.5">–</span>
+                          <span className="text-ink-500 text-xs px-0.5">–</span>
                           <ScoreStepper
                             value={sc.score2}
                             onChange={v => setScore(team1, team2, 'score2', v)}
                           />
                         </div>
                         <div className="flex items-center gap-1 flex-1 min-w-0 justify-end">
-                          <span className="text-slate-900 text-xs truncate">{team2}</span>
+                          <span className="text-ink-50 text-xs truncate">{team2}</span>
                           <FlagImage code={flags[team2]} size={12} />
                         </div>
                       </div>
                     )
                   })}
-                </div>
+                </GlassCard>
               ))}
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-3">
-            <button
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              variant="secondary"
+              icon={RotateCcw}
               onClick={handleReset}
               disabled={!hasAnyScenario && result === null}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-700 rounded-lg text-sm transition-colors"
             >
               Reset
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
+              icon={WandSparkles}
+              loading={isPending}
               onClick={handleCalculate}
-              disabled={!hasAnyScenario || isPending}
-              className="px-5 py-2 text-white rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40 shadow-sm"
-              style={{ backgroundColor: 'var(--color-wc-blue)' }}
+              disabled={!hasAnyScenario}
             >
-              {isPending ? 'Calculating…' : 'Calculate →'}
-            </button>
+              {isPending ? 'Calculating…' : 'Calculate'}
+            </Button>
             {hasAnyScenario && !isPending && (
-              <span className="text-slate-500 text-xs">
+              <span className="text-ink-400 text-xs">
                 {Object.keys(scenarios).length} match
                 {Object.keys(scenarios).length !== 1 ? 'es' : ''} set across{' '}
                 {affectedGroups.size} group{affectedGroups.size !== 1 ? 's' : ''}
@@ -408,16 +400,18 @@ export function ScenarioBuilder() {
 
       {/* Results */}
       {result && (
-        <div className="space-y-6 border-t border-slate-200 pt-5">
+        <div className="space-y-6 border-t border-white/[0.08] pt-6">
           {/* Projected standings */}
           <div>
-            <h3 className="text-slate-800 font-semibold mb-3">Projected Group Standings</h3>
+            <h3 className="flex items-center gap-2 font-display text-sm uppercase tracking-[0.14em] text-ink-100 mb-3">
+              <ListOrdered size={15} className="text-gold" /> Projected group standings
+            </h3>
             {Object.keys(result.standings).length === 0 ? (
-              <p className="text-slate-500 text-sm">
+              <p className="text-ink-400 text-sm">
                 No groups have any results yet — add at least one scenario above.
               </p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {Object.entries(result.standings)
                   .sort(([a], [b]) => a.localeCompare(b))
                   .map(([letter, gdata]) => (
@@ -435,15 +429,19 @@ export function ScenarioBuilder() {
 
           {/* Updated third-place race */}
           <div>
-            <h3 className="text-slate-800 font-semibold mb-3">Updated Third-Place Race</h3>
+            <h3 className="flex items-center gap-2 font-display text-sm uppercase tracking-[0.14em] text-ink-100 mb-3">
+              <Medal size={15} className="text-gold" /> Updated third-place race
+            </h3>
             <WhatIfThirds thirds={result.third_place_race} flags={flags} />
           </div>
 
           {/* R32 projections */}
           {result.r32_projections.length > 0 && (
             <div>
-              <h3 className="text-slate-800 font-semibold mb-1">Projected R32 Bracket</h3>
-              <p className="text-slate-500 text-xs mb-3">
+              <h3 className="flex items-center gap-2 font-display text-sm uppercase tracking-[0.14em] text-ink-100 mb-1">
+                <GitBranch size={15} className="text-gold" /> Projected R32 bracket
+              </h3>
+              <p className="text-ink-400 text-xs mb-3">
                 Teams shown where group winners / runners-up are already determined.
                 Unresolved slots show their qualification path.
               </p>
