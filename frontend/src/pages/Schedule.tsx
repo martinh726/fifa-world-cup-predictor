@@ -7,6 +7,7 @@ import { PageHeader } from '../components/ui/PageHeader'
 import { GlassCard } from '../components/ui/GlassCard'
 import { CardSkeleton } from '../components/ui/Skeleton'
 import { EmptyState } from '../components/ui/EmptyState'
+import { QueryError } from '../components/ui/QueryError'
 import type { Accent } from '../components/ui/accents'
 import { formatLocalKickoff } from '../utils/time'
 
@@ -111,7 +112,7 @@ function hoursUntil(utcDate: string): number {
 }
 
 export function Schedule() {
-  const { data: scheduleData, isLoading, dataUpdatedAt } = useQuery({
+  const { data: scheduleData, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['schedule', 60],
     queryFn: () => fetchSchedule(60),
     staleTime: 600_000,
@@ -141,6 +142,15 @@ export function Schedule() {
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} lines={2} />)}
         </div>
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="stagger space-y-5">
+        <PageHeader title="Fixtures" icon={CalendarDays} />
+        <QueryError onRetry={() => refetch()} />
       </div>
     )
   }

@@ -18,6 +18,7 @@ import { StatCard } from '../components/ui/StatCard'
 import { Button } from '../components/ui/Button'
 import { Collapsible } from '../components/ui/Collapsible'
 import { CardSkeleton } from '../components/ui/Skeleton'
+import { QueryError } from '../components/ui/QueryError'
 
 function StatusIcon({ status, message }: { status: string; message: string }) {
   if (status === 'through') return <CircleCheck size={13} className="text-host-green inline" />
@@ -37,7 +38,7 @@ function statusColor(t: { status: string; message: string }) {
 export function LiveTracker() {
   const [autoRefresh, setAutoRefresh] = useState(true)
 
-  const { data: results, isLoading, dataUpdatedAt } = useResultsPolling(autoRefresh)
+  const { data: results, isLoading, isError, refetch, dataUpdatedAt } = useResultsPolling(autoRefresh)
   const { manualResults, addManualResult, clearManualResults } = useAppStore()
   const { data: teamsData } = useQuery({ queryKey: ['teams'], queryFn: fetchTeams })
   const { data: scheduleData } = useQuery({
@@ -109,6 +110,8 @@ export function LiveTracker() {
       />
 
       {isLoading && !results && <CardSkeleton lines={4} />}
+
+      {isError && !results && <QueryError onRetry={() => refetch()} />}
 
       {/* Snapshot stats — visible as soon as any matches have been played */}
       {snapshot && (snapshot.through > 0 || snapshot.eliminated > 0) && (

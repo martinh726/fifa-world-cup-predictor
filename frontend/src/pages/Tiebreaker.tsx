@@ -7,6 +7,7 @@ import { PageHeader } from '../components/ui/PageHeader'
 import { GlassCard } from '../components/ui/GlassCard'
 import { CardSkeleton } from '../components/ui/Skeleton'
 import { EmptyState } from '../components/ui/EmptyState'
+import { QueryError } from '../components/ui/QueryError'
 import { cn } from '../utils/cn'
 import type { TiebreakerRow, TiebreakerGroup } from '../api/types'
 
@@ -221,7 +222,7 @@ function GroupCard({ letter, group, flags }: {
 }
 
 export function Tiebreaker() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['tiebreaker'],
     queryFn: fetchTiebreaker,
     staleTime: 120_000,
@@ -235,6 +236,15 @@ export function Tiebreaker() {
       <div className="stagger space-y-5">
         <PageHeader title="Tiebreakers" icon={Scale} subtitle="Computing scenarios…" />
         <CardSkeleton lines={5} />
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="stagger space-y-5">
+        <PageHeader title="Tiebreakers" icon={Scale} />
+        <QueryError onRetry={() => refetch()} />
       </div>
     )
   }

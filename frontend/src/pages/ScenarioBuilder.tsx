@@ -1,13 +1,20 @@
 import { Fragment, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { WandSparkles, Lock, Medal, GitBranch, ListOrdered, RotateCcw, CircleCheck, CircleX } from 'lucide-react'
-import { fetchResults, fetchTeams, fetchWhatIf } from '../api'
+import { WandSparkles, Lock, Medal, GitBranch, ListOrdered, RotateCcw, CircleCheck, CircleX, Swords, Trophy } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { fetchBracketLive, fetchResults, fetchSimulate, fetchTeams, fetchWhatIf } from '../api'
+import { useAppStore } from '../store/useAppStore'
 import { FlagImage } from '../components/shared/FlagImage'
 import { PageHeader } from '../components/ui/PageHeader'
 import { GlassCard } from '../components/ui/GlassCard'
 import { Button } from '../components/ui/Button'
+import { QueryError } from '../components/ui/QueryError'
+import { CardSkeleton } from '../components/ui/Skeleton'
+import { ChampionshipOddsBar } from '../components/charts/ChampionshipOddsBar'
+import { cn } from '../utils/cn'
 import type {
-  GroupStanding, R32Projection, StandingTeam, ThirdPlaceTeam, WhatIfResponse,
+  GroupStanding, KoPick, LiveBracketMatch, R32Projection, SimulateResponse,
+  StandingTeam, ThirdPlaceTeam, WhatIfResponse,
 } from '../api/types'
 
 // ─── Score stepper ────────────────────────────────────────────────────────────
@@ -197,21 +204,238 @@ function WhatIfR32({ projections, flags }: { projections: R32Projection[]; flags
   )
 }
 
+// ─── Knockout scenario tab ────────────────────────────────────────────────────
+
+const KO_STAGE_ORDER: LiveBracketMatch['stage'][] = ['r32', 'r16', 'qf', 'sf', 'final']
+const KO_STAGE_TITLES: Record<LiveBracketMatch['stage'], string> = {
+  r32: 'Round of 32',
+  r16: 'Round of 16',
+  qf: 'Quarter-finals',
+  sf: 'Semi-finals',
+  final: 'Final',
+}
+
+interface ResolvedMatch {
+  m: LiveBracketMatch
+  t1: string | null
+  t2: string | null
+  winner: string | null
+  pickable: boolean
+}
+
+function KnockoutScenario({ flags }: { flags: Record<string, string> }) {
+  const { squadStrength } = useAppStore()
+  const [picks, setPicks] = useState<Record<number, string>>({})
+  const [simResult, setSimResult] = useState<SimulateResponse | null>(null)
+
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['bracket-live'],
+    queryFn: fetchBracketLive,
+    staleTime: 120_000,
+  })
+
+  // Resolve each match's effective teams: real names stay, 'W{n}' slots cascade
+  // from earlier real winners or user picks. A pick that no longer matches its
+  // match's resolved teams (an upstream pick changed) is silently ignored.
+  const resolved = useMemo<ResolvedMatch[]>(() => {
+    const matches = [...(data?.matches ?? [])].sort((a, b) => a.match - b.match)
+    const winners = new Map<number, string | null>()
+    const isConcrete = (t: string) => t in flags
+
+    const resolveSide = (team: string, slot: string): string | null => {
+      const clean = team.replace(/\*$/, '')
+      if (isConcrete(clean)) return clean
+      const wm = /^W(\d+)$/.exec(slot)
+      if (wm) return winners.get(Number(wm[1])) ?? null
+      return null
+    }
+
+    const out: ResolvedMatch[] = []
+    for (const m of matches) {
+      const t1 = resolveSide(m.team1, m.slot1)
+      const t2 = resolveSide(m.team2, m.slot2)
+      let winner: string | null = null
+      if (m.actual) {
+        winner = m.winner
+      } else {
+        const p = picks[m.match]
+        if (p && (p === t1 || p === t2)) winner = p
+      }
+      winners.set(m.match, winner)
+      out.push({ m, t1, t2, winner, pickable: !m.actual && !!t1 && !!t2 })
+    }
+    return out
+  }, [data, picks, flags])
+
+  const validPicks: KoPick[] = resolved
+    .filter(r => !r.m.actual && r.winner && r.t1 && r.t2)
+    .map(r => ({ team1: r.t1!, team2: r.t2!, winner: r.winner! }))
+
+  const { mutate: simulate, isPending } = useMutation({
+    mutationFn: fetchSimulate,
+    onSuccess: setSimResult,
+    onError: () => toast.error('Simulation failed — is the backend running?'),
+  })
+
+  const handleSimulate = () =>
+    simulate({
+      n_sims: 5000,
+      lock_real_results: true,
+      manual_results: [],
+      squad_strength: squadStrength,
+      ko_picks: validPicks,
+    })
+
+  const handleReset = () => {
+    setPicks({})
+    setSimResult(null)
+  }
+
+  if (isLoading) return <CardSkeleton lines={6} />
+  if (isError) return <QueryError onRetry={() => refetch()} />
+
+  const anyPending = resolved.some(r => r.pickable)
+  const sortedSummary = simResult
+    ? [...simResult.summary].sort((a, b) => (b['P(Champion)'] ?? 0) - (a['P(Champion)'] ?? 0))
+    : []
+
+  const teamButton = (r: ResolvedMatch, team: string | null, raw: string) => {
+    if (!team) {
+      return (
+        <span className="flex-1 px-2 py-1.5 text-xs text-ink-500 italic truncate">
+          {raw.replace(/^W(\d+)$/, 'Winner M$1')}
+        </span>
+      )
+    }
+    const isWinner = r.winner === team
+    return (
+      <button
+        disabled={!r.pickable}
+        onClick={() =>
+          setPicks(prev => {
+            const next = { ...prev }
+            if (prev[r.m.match] === team) delete next[r.m.match]
+            else next[r.m.match] = team
+            return next
+          })
+        }
+        className={cn(
+          'flex-1 flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs truncate transition-colors min-w-0',
+          r.pickable && 'cursor-pointer hover:bg-white/[0.08]',
+          isWinner
+            ? 'bg-host-green/20 text-ink-50 font-semibold border border-host-green/50'
+            : 'bg-white/[0.04] text-ink-200 border border-transparent',
+        )}
+      >
+        <FlagImage code={flags[team]} size={12} />
+        <span className="truncate">{team}</span>
+        {isWinner && r.m.actual && <CircleCheck size={11} className="text-host-green shrink-0" />}
+      </button>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {!anyPending && (
+        <GlassCard className="p-5 text-center text-ink-400 text-sm">
+          No pending knockout matches with both teams known yet — picks unlock as
+          the bracket fills in.
+        </GlassCard>
+      )}
+
+      {KO_STAGE_ORDER.map(stage => {
+        const stageMatches = resolved.filter(r => r.m.stage === stage)
+        if (!stageMatches.length) return null
+        return (
+          <div key={stage}>
+            <h3 className="flex items-center gap-2 font-display text-sm uppercase tracking-[0.14em] text-ink-100 mb-3">
+              <Swords size={15} className="text-gold" /> {KO_STAGE_TITLES[stage]}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
+              {stageMatches.map(r => (
+                <GlassCard
+                  key={r.m.match}
+                  className={cn('p-2.5 flex items-center gap-2', r.m.actual && 'opacity-70')}
+                >
+                  <span className="text-ink-500 font-mono text-[10px] w-8 shrink-0">
+                    M{r.m.match}
+                  </span>
+                  {teamButton(r, r.t1, r.m.team1)}
+                  <span className="text-ink-500 text-[10px] uppercase shrink-0">vs</span>
+                  {teamButton(r, r.t2, r.m.team2)}
+                  {r.m.actual && <Lock size={11} className="text-ink-600 shrink-0" />}
+                </GlassCard>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      {/* Actions */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button
+          variant="secondary"
+          icon={RotateCcw}
+          onClick={handleReset}
+          disabled={!Object.keys(picks).length && !simResult}
+        >
+          Reset
+        </Button>
+        <Button
+          variant="primary"
+          icon={WandSparkles}
+          loading={isPending}
+          onClick={handleSimulate}
+          disabled={!validPicks.length}
+        >
+          {isPending ? 'Simulating…' : 'Simulate scenario'}
+        </Button>
+        {validPicks.length > 0 && !isPending && (
+          <span className="text-ink-400 text-xs">
+            {validPicks.length} pick{validPicks.length !== 1 ? 's' : ''} will be forced
+            in every simulation
+          </span>
+        )}
+      </div>
+
+      {/* Results */}
+      {simResult && (
+        <div className="space-y-4 border-t border-white/[0.08] pt-6">
+          <h3 className="flex items-center gap-2 font-display text-sm uppercase tracking-[0.14em] text-ink-100">
+            <Trophy size={15} className="text-gold" /> Championship odds with your picks
+          </h3>
+          <p className="text-ink-400 text-xs">
+            {simResult.n_sims.toLocaleString()} simulations · {validPicks.length} knockout
+            pick{validPicks.length !== 1 ? 's' : ''} applied · real results locked
+          </p>
+          <GlassCard className="p-4">
+            <ChampionshipOddsBar summary={sortedSummary} topN={10} flags={flags} />
+          </GlassCard>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 type ScenarioScore = { score1: number; score2: number }
 
 export function ScenarioBuilder() {
+  const [tab, setTab] = useState<'group' | 'knockout'>('group')
   const [scenarios, setScenarios] = useState<Record<string, ScenarioScore>>({})
   const [result, setResult] = useState<WhatIfResponse | null>(null)
 
-  const { data: teamsData } = useQuery({ queryKey: ['teams'], queryFn: fetchTeams })
-  const { data: resultsData } = useQuery({ queryKey: ['results'], queryFn: fetchResults })
+  const { data: teamsData, isError: teamsError, refetch: refetchTeams } =
+    useQuery({ queryKey: ['teams'], queryFn: fetchTeams })
+  const { data: resultsData, isError: resultsError, refetch: refetchResults } =
+    useQuery({ queryKey: ['results'], queryFn: fetchResults })
   const flags = teamsData?.flags ?? {}
 
   const { mutate: calculate, isPending } = useMutation({
     mutationFn: fetchWhatIf,
     onSuccess: setResult,
+    onError: () => toast.error('Scenario calculation failed — is the backend running?'),
   })
 
   // Per-group: played (locked) and remaining (editable) fixtures
@@ -299,10 +523,36 @@ export function ScenarioBuilder() {
       <PageHeader
         title="Scenario Builder"
         icon={WandSparkles}
-        subtitle="Set hypothetical scores for unplayed group matches to see how standings, the third-place race, and the R32 bracket would look. Played matches are locked."
+        subtitle={
+          tab === 'group'
+            ? 'Set hypothetical scores for unplayed group matches to see how standings, the third-place race, and the R32 bracket would look. Played matches are locked.'
+            : 'Pick winners for pending knockout matches and re-simulate the tournament with those results forced. Decided matches are locked.'
+        }
       />
 
-      {allGroupsComplete ? (
+      {/* Tab switcher */}
+      <div className="flex gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/[0.07] w-fit">
+        {([['group', 'Group stage'], ['knockout', 'Knockout']] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={cn(
+              'px-4 py-2 rounded-lg text-xs font-display uppercase tracking-[0.12em] transition-colors cursor-pointer',
+              tab === key
+                ? 'bg-white/[0.08] text-ink-50 border border-white/[0.10]'
+                : 'text-ink-400 hover:text-ink-100 border border-transparent',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'knockout' ? (
+        <KnockoutScenario flags={flags} />
+      ) : (teamsError || resultsError) ? (
+        <QueryError onRetry={() => { refetchTeams(); refetchResults() }} />
+      ) : allGroupsComplete ? (
         <GlassCard className="p-6 text-center text-ink-400">
           All group-stage matches have been played — the bracket is set.
         </GlassCard>
