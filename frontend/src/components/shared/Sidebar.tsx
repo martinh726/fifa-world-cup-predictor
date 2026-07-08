@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trophy, Users, ClipboardList, RefreshCw, Plus, X } from 'lucide-react'
-import { fetchBacktestReport, fetchTeams, triggerRefresh } from '../../api'
+import { fetchBacktestReport, fetchStatus, fetchTeams, triggerRefresh } from '../../api'
 import { useAppStore } from '../../store/useAppStore'
 import { BrandArcPattern } from './BrandArcPattern'
 import { Button } from '../ui/Button'
@@ -47,6 +47,47 @@ function SidebarHeader() {
           </span>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Data-source / model status indicator ────────────────────────────────────
+function StatusIndicator() {
+  const { data, isError } = useQuery({
+    queryKey: ['status'],
+    queryFn: fetchStatus,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  })
+
+  const sources = data ? Object.values(data.sources) : []
+  const anyFailed = isError || sources.some(s => !s.ok && !s.rate_limited)
+  const degraded = !isError && (
+    (data && !data.football_data_key) || sources.some(s => s.rate_limited)
+  )
+  const color = anyFailed ? 'bg-host-red' : degraded ? 'bg-gold' : 'bg-host-green'
+  const label = isError
+    ? 'API unreachable'
+    : anyFailed
+      ? 'Data feed error'
+      : degraded
+        ? (data && !data.football_data_key ? 'No API key' : 'Rate limited')
+        : 'Live data OK'
+
+  return (
+    <div className="text-left bg-white/[0.04] rounded-xl border border-white/[0.07] px-3 py-2 space-y-1">
+      <div className="flex items-center gap-2">
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} aria-hidden="true" />
+        <span className="text-[11px] font-semibold text-ink-300">{label}</span>
+      </div>
+      {data?.data_through && (
+        <div className="text-[10px] text-ink-500">Data through {data.data_through}</div>
+      )}
+      {data?.model.last_trained && (
+        <div className="text-[10px] text-ink-500">
+          Model trained {data.model.last_trained.slice(0, 10)}
+        </div>
+      )}
     </div>
   )
 }
@@ -224,6 +265,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
 
         {/* Footer */}
         <div className="text-center space-y-2.5 pb-1">
+          <StatusIndicator />
           <div className="flex h-0.5 rounded-full overflow-hidden opacity-70" aria-hidden="true">
             <div className="flex-1 bg-host-red" />
             <div className="flex-1 bg-host-blue-bright" />

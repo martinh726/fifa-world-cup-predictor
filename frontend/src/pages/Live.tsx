@@ -10,6 +10,7 @@ import { GlassCard } from '../components/ui/GlassCard'
 import { Collapsible } from '../components/ui/Collapsible'
 import { CardSkeleton } from '../components/ui/Skeleton'
 import { EmptyState } from '../components/ui/EmptyState'
+import { QueryError } from '../components/ui/QueryError'
 import { fetchTeams } from '../api'
 import { formatLocalTime } from '../utils/time'
 import type { MatchStats } from '../api/types'
@@ -127,7 +128,7 @@ function LiveBadge({ label }: { label: string }) {
 }
 
 export function Live() {
-  const { data, isLoading, dataUpdatedAt } = useLivePolling()
+  const { data, isLoading, isError, refetch, dataUpdatedAt } = useLivePolling()
   const { appendWpaPoint, clearStaleWpaKeys, wpaHistory } = useAppStore()
   const { data: teamsData } = useQuery({ queryKey: ['teams'], queryFn: fetchTeams })
   const flags = teamsData?.flags ?? {}
@@ -173,6 +174,8 @@ export function Live() {
       />
 
       {isLoading && !data && <CardSkeleton lines={4} />}
+
+      {isError && !data && <QueryError onRetry={() => refetch()} />}
 
       {/* Live matches */}
       {matches.length > 0 ? (

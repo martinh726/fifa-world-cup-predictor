@@ -4,6 +4,46 @@ export interface TeamsResponse {
   groups: Record<string, string[]>
   hosts: string[]
   data_through: string
+  model_trained_through?: string | null
+  model_last_trained?: string | null
+}
+
+export interface FeedSourceStatus {
+  ok: boolean
+  error: string | null
+  rate_limited: boolean
+  last_checked: string
+  last_success: string | null
+}
+
+export interface StatusResponse {
+  football_data_key: boolean
+  apifootball_key: boolean
+  sources: Record<string, FeedSourceStatus>
+  data_through: string | null
+  model: {
+    trained_through: string | null
+    last_trained: string | null
+  }
+  scheduler: {
+    enabled: boolean
+    last_check: string | null
+    last_trained_at: string | null
+    retraining_now: boolean
+    last_error: string | null
+  } | null
+}
+
+export interface OddsSnapshot {
+  ts: string
+  date: string
+  n_sims: number
+  locked_count: number
+  odds: Record<string, number>
+}
+
+export interface OddsHistoryResponse {
+  snapshots: OddsSnapshot[]
 }
 
 export interface SquadMetrics {
@@ -55,11 +95,34 @@ export interface ManualResult {
   score2: number
 }
 
+export interface KoPick {
+  team1: string
+  team2: string
+  winner: string
+}
+
 export interface SimulateRequest {
   n_sims: number
   lock_real_results: boolean
   manual_results: ManualResult[]
   squad_strength: number
+  ko_picks?: KoPick[]
+}
+
+export interface LiveBracketMatch {
+  match: number
+  stage: 'r32' | 'r16' | 'qf' | 'sf' | 'final'
+  team1: string
+  team2: string
+  slot1: string
+  slot2: string
+  winner: string | null
+  actual: boolean
+  pickable: boolean
+}
+
+export interface LiveBracketResponse {
+  matches: LiveBracketMatch[]
 }
 
 export interface SummaryRow {

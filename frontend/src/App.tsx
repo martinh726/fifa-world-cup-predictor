@@ -6,6 +6,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { cn } from './utils/cn'
 import { Sidebar } from './components/shared/Sidebar'
+import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { MatchPredictor } from './pages/MatchPredictor'
 import { TournamentSimulator } from './pages/TournamentSimulator'
 import { Live } from './pages/Live'
@@ -111,17 +112,19 @@ export default function App() {
         {/* Page content — re-keyed per route so the entrance animation replays */}
         <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6">
           <div key={location.pathname} className="max-w-[1400px]">
-            <Routes>
-              <Route path="/" element={<MatchPredictor />} />
-              <Route path="/simulator" element={<TournamentSimulator />} />
-              <Route path="/live" element={<Live />} />
-              <Route path="/tracker" element={<LiveTracker />} />
-              <Route path="/team" element={<TeamFocus />} />
-              <Route path="/scenarios" element={<ScenarioBuilder />} />
-              <Route path="/schedule" element={<Schedule />} />
-              <Route path="/tiebreaker" element={<Tiebreaker />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<MatchPredictor />} />
+                <Route path="/simulator" element={<TournamentSimulator />} />
+                <Route path="/live" element={<Live />} />
+                <Route path="/tracker" element={<LiveTracker />} />
+                <Route path="/team" element={<TeamFocus />} />
+                <Route path="/scenarios" element={<ScenarioBuilder />} />
+                <Route path="/schedule" element={<Schedule />} />
+                <Route path="/tiebreaker" element={<Tiebreaker />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </ErrorBoundary>
           </div>
         </main>
       </div>

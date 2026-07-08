@@ -1,7 +1,8 @@
 import { api } from './client'
 import type {
-  CalibrationResponse, LiveResponse, PredictResponse, ResultsResponse,
-  ScheduleMatch, SimulateRequest, SimulateResponse, TeamResponse, TeamsResponse,
+  CalibrationResponse, LiveBracketResponse, LiveResponse, OddsHistoryResponse,
+  PredictResponse, ResultsResponse, ScheduleMatch, SimulateRequest,
+  SimulateResponse, StatusResponse, TeamResponse, TeamsResponse,
   TiebreakerResponse, WhatIfRequest, WhatIfResponse,
 } from './types'
 
@@ -51,5 +52,14 @@ export const fetchTiebreaker = (): Promise<TiebreakerResponse> =>
 
 export const fetchCalibration = (): Promise<CalibrationResponse> =>
   api.get('/calibration').then(r => r.data)
+
+export const fetchStatus = (): Promise<StatusResponse> =>
+  api.get('/status').then(r => r.data)
+
+export const fetchBracketLive = (): Promise<LiveBracketResponse> =>
+  api.get('/bracket/live').then(r => r.data)
+
+export const fetchOddsHistory = (): Promise<OddsHistoryResponse> =>
+  api.get('/odds-history').then(r => r.data)
 
 export * from './types'
