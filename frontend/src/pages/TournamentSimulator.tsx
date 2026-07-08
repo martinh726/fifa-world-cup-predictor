@@ -5,10 +5,11 @@ import {
   Dices, Play, Trash2, Trophy, BarChart3, TrendingUp, ListOrdered, Target,
   CircleCheck, CircleX, Ruler,
 } from 'lucide-react'
-import { fetchSimulate, fetchCalibration } from '../api'
+import { fetchSimulate, fetchCalibration, fetchOddsHistory } from '../api'
 import type { CalibrationResponse } from '../api/types'
 import { useAppStore } from '../store/useAppStore'
 import { ChampionshipOddsBar } from '../components/charts/ChampionshipOddsBar'
+import { OddsTimelineChart } from '../components/charts/OddsTimelineChart'
 import { BracketViewer } from '../components/bracket/BracketViewer'
 import { PageHeader } from '../components/ui/PageHeader'
 import { GlassCard, SectionCard } from '../components/ui/GlassCard'
@@ -39,6 +40,12 @@ export function TournamentSimulator() {
   const { manualResults, squadStrength, lastSimResult, oddsHistory,
     setLastSimResult, appendOddsHistory, clearOddsHistory, clearManualResults } = useAppStore()
   const queryClient = useQueryClient()
+
+  const { data: oddsHistoryData, isError: oddsHistoryError } = useQuery({
+    queryKey: ['odds-history'],
+    queryFn: fetchOddsHistory,
+    staleTime: 300_000,
+  })
 
   const { mutate: runSim, isPending } = useMutation({
     mutationFn: fetchSimulate,
@@ -195,6 +202,17 @@ export function TournamentSimulator() {
               }
             >
               <OddsTrendChart oddsHistory={oddsHistory} summary={lastSimResult.summary} />
+            </SectionCard>
+          )}
+
+          {/* Championship odds over the tournament (server-persisted daily snapshots) */}
+          {!oddsHistoryError && (oddsHistoryData?.snapshots.length ?? 0) >= 2 && (
+            <SectionCard
+              icon={TrendingUp}
+              accent="green"
+              title="Championship odds over the tournament"
+            >
+              <OddsTimelineChart snapshots={oddsHistoryData!.snapshots} />
             </SectionCard>
           )}
 

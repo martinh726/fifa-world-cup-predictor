@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, model_validator
 
 from backend.bracket_svg import build_live_bracket
-from backend import deps
+from backend import deps, odds_history
 from backend.deps import AppState, get_state, predictor_for
 from backend.utils import (compute_accuracy, fetch_api_finished,
                            merge_api_finished, merge_ko_picks)
@@ -126,6 +126,15 @@ def _run_sync(req: SimulateRequest, state: AppState) -> dict[str, Any]:
     }
 
 
+def _is_canonical(req: SimulateRequest) -> bool:
+    """A 'default' run — real results locked, nothing hypothetical — worth
+    recording in the odds-over-time history. What-if scenarios (manual
+    results, knockout picks, or a tweaked squad_strength) are excluded so
+    they never pollute the tournament-wide odds trend."""
+    return (req.lock_real_results and not req.manual_results
+            and not req.ko_picks and abs(req.squad_strength - 0.18) <= 0.005)
+
+
 @router.post("/simulate")
 async def run_simulation(req: SimulateRequest, state: AppState = Depends(get_state)):
     if not state.predictor:
@@ -134,4 +143,9 @@ async def run_simulation(req: SimulateRequest, state: AppState = Depends(get_sta
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, _run_sync, req, state)
     deps.set_last_sim_result(result)
+    if _is_canonical(req):
+        odds_history.record_snapshot(
+            result["summary"], locked_count=result["locked_count"],
+            n_sims=result["n_sims"],
+        )
     return result

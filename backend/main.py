@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -30,7 +31,20 @@ async def lifespan(app: FastAPI):
     log.info("Loading data and building predictor (squad_strength=%s)...", squad_strength)
     deps.initialize(squad_strength=squad_strength)
     log.info("Ready.")
+
+    scheduler_task = None
+    if os.environ.get("ENABLE_SCHEDULER", "1") == "1":
+        from backend.scheduler import scheduler_loop
+        interval_s = int(os.environ.get("SCHEDULER_INTERVAL_MIN", "60")) * 60
+        cooldown_h = float(os.environ.get("RETRAIN_COOLDOWN_HOURS", "6"))
+        scheduler_task = asyncio.create_task(
+            scheduler_loop(interval_s, squad_strength, cooldown_h)
+        )
+
     yield
+
+    if scheduler_task:
+        scheduler_task.cancel()
 
 
 app = FastAPI(title="WC 2026 Predictor API", lifespan=lifespan)
