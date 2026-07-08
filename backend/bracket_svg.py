@@ -281,6 +281,7 @@ def build_live_bracket(group_results_all: list, ko_results_all: list, config: di
         bracket[m] = {
             "match": m, "stage": stage_map[m],
             "team1": t1, "team2": t2,
+            "slot1": match["slot1"], "slot2": match["slot2"],
             "winner": winner, "win_prob": None, "actual": winner is not None,
         }
     return bracket

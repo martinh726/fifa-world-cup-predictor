@@ -649,7 +649,7 @@ export function ScenarioBuilder() {
       )}
 
       {/* Results */}
-      {result && (
+      {tab === 'group' && result && (
         <div className="space-y-6 border-t border-white/[0.08] pt-6">
           {/* Projected standings */}
           <div>

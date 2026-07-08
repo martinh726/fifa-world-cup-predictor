@@ -270,6 +270,19 @@ def compute_goal_stats(all_played: list) -> dict:
     }
 
 
+def merge_ko_picks(live_ko: list, picks: list[tuple[str, str, str]]) -> list:
+    """Combine user knockout picks with real decided KO results.
+
+    Picks whose pairing is already decided in reality are dropped; real results
+    come last so they win any remaining clash in the simulator's forced-winner
+    map (later entries overwrite earlier ones for the same pairing).
+    """
+    decided = {frozenset((t1, t2)) for t1, t2, _ in live_ko}
+    kept = [(t1, t2, w) for t1, t2, w in picks
+            if frozenset((t1, t2)) not in decided]
+    return kept + list(live_ko)
+
+
 def matrix_to_list(mat) -> list[list[float]]:
     """Convert numpy score matrix to nested list for JSON serialization."""
     return [[float(v) for v in row] for row in mat]

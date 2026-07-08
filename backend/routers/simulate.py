@@ -5,12 +5,13 @@ import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from backend.bracket_svg import build_live_bracket
 from backend import deps
 from backend.deps import AppState, get_state, predictor_for
-from backend.utils import compute_accuracy, fetch_api_finished, merge_api_finished
+from backend.utils import (compute_accuracy, fetch_api_finished,
+                           merge_api_finished, merge_ko_picks)
 from src.livefeed import get_api_key
 
 router = APIRouter()
@@ -23,11 +24,24 @@ class ManualResult(BaseModel):
     score2: int
 
 
+class KoPick(BaseModel):
+    team1: str
+    team2: str
+    winner: str
+
+    @model_validator(mode="after")
+    def _winner_in_pair(self):
+        if self.winner not in (self.team1, self.team2):
+            raise ValueError("winner must be one of team1/team2")
+        return self
+
+
 class SimulateRequest(BaseModel):
     n_sims: int = 10000
     lock_real_results: bool = True
     manual_results: list[ManualResult] = []
     squad_strength: float = 0.18
+    ko_picks: list[KoPick] = []
 
 
 def _run_sync(req: SimulateRequest, state: AppState) -> dict[str, Any]:
@@ -51,6 +65,13 @@ def _run_sync(req: SimulateRequest, state: AppState) -> dict[str, Any]:
     ko_winners: list = []
     if req.lock_real_results:
         ko_winners = list(live_ko)
+
+    if req.ko_picks:
+        # Unknown names would KeyError inside the simulator's team index
+        known = set(sim.idx)
+        picks = [(p.team1, p.team2, p.winner) for p in req.ko_picks
+                 if p.team1 in known and p.team2 in known]
+        ko_winners = merge_ko_picks(ko_winners, picks)
 
     result = sim.run(locked_group=locked_group, ko_winners=ko_winners)
 
