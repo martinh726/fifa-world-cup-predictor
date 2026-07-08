@@ -1,6 +1,7 @@
 """MatchPredictor: turn trained artifacts + current team form into match forecasts."""
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 import joblib
@@ -58,6 +59,16 @@ class MatchPredictor:
 
     def teams(self) -> list[str]:
         return sorted(self.ratings, key=self.ratings.get, reverse=True)
+
+    def with_strength(self, strength: float) -> "MatchPredictor":
+        """O(1) clone sharing all heavy state (model, Elo, stats); only the
+        post-model squad adjustment strength differs. Clones must stay read-only —
+        every attribute except squad_adjustment_strength is shared with the original."""
+        if abs(strength - self.squad_adjustment_strength) <= 1e-9:
+            return self
+        clone = copy.copy(self)
+        clone.squad_adjustment_strength = strength
+        return clone
 
     def _rows(self, fixtures: list[tuple[str, str, bool, float]]) -> pd.DataFrame:
         rows = [

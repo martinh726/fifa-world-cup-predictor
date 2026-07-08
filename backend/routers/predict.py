@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.deps import AppState, get_state
+from backend.deps import AppState, get_state, predictor_for
 from backend.utils import matrix_to_list
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 def _h2h(results, team1: str, team2: str) -> dict:
@@ -64,16 +66,11 @@ def predict_match(
 
     try:
         inj: dict = json.loads(injuries)
-    except Exception:
+    except Exception as e:
+        log.warning("invalid injuries payload %r: %s", injuries, e)
         inj = {}
 
-    predictor = state.predictor
-    # Rebuild predictor with different squad_strength only when significantly different
-    if abs(squad_strength - predictor.squad_adjustment_strength) > 0.005:
-        from src.predict import MatchPredictor
-        predictor = MatchPredictor(
-            results=state.results, squad_adjustment_strength=squad_strength
-        )
+    predictor = predictor_for(state, squad_strength)
 
     pred = predictor.predict(home, away, neutral=neutral, injuries=inj)
     mat = pred["score_matrix"]

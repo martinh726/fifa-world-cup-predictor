@@ -261,38 +261,40 @@ def matrix_to_list(mat) -> list[list[float]]:
 
 
 def compute_accuracy(predictor, group_results: list, ko_results: list) -> dict:
-    """Compute prediction accuracy on completed matches."""
+    """Compute prediction accuracy on completed matches (single batched model call)."""
+    known = predictor.ratings
+    group = [(t1, t2, s1, s2) for t1, t2, s1, s2 in group_results
+             if t1 in known and t2 in known]
+    ko = [(t1, t2, w) for t1, t2, w in ko_results if t1 in known and t2 in known]
+
+    fixtures = [(t1, t2, True) for t1, t2, _, _ in group] + \
+               [(t1, t2, True) for t1, t2, _ in ko]
+    preds = predictor.predict_many(fixtures) if fixtures else []
+    group_preds, ko_preds = preds[:len(group)], preds[len(group):]
+
     rows, correct, total, brier = [], 0, 0, 0.0
-    for t1, t2, s1, s2 in group_results:
-        try:
-            p = predictor.predict(t1, t2, neutral=True, injuries={})
-            act = "H" if s1 > s2 else ("D" if s1 == s2 else "A")
-            pred_out = max(("H", p["p_home"]), ("D", p["p_draw"]), ("A", p["p_away"]),
-                           key=lambda x: x[1])[0]
-            ih, id_, ia = (1, 0, 0) if act == "H" else ((0, 1, 0) if act == "D" else (0, 0, 1))
-            brier += (p["p_home"] - ih) ** 2 + (p["p_draw"] - id_) ** 2 + (p["p_away"] - ia) ** 2
-            total += 1
-            correct += act == pred_out
-            rows.append({"match": f"{t1} vs {t2}", "score": f"{s1}–{s2}",
-                         "predicted": pred_out, "actual": act, "correct": act == pred_out,
-                         "p_home": round(p["p_home"], 3), "p_draw": round(p["p_draw"], 3),
-                         "p_away": round(p["p_away"], 3)})
-        except Exception:
-            pass
-    for t1, t2, winner in ko_results:
-        try:
-            p = predictor.predict(t1, t2, neutral=True, injuries={})
-            pred_w = t1 if p["p_home"] >= p["p_away"] else t2
-            total += 1
-            correct += winner == pred_w
-            brier += (p["p_home"] + p["p_draw"] * 0.5 - (1 if winner == t1 else 0)) ** 2
-            rows.append({"match": f"{t1} vs {t2}", "score": "KO",
-                         "predicted": "H" if pred_w == t1 else "A",
-                         "actual": "H" if winner == t1 else "A", "correct": winner == pred_w,
-                         "p_home": round(p["p_home"], 3), "p_draw": round(p["p_draw"], 3),
-                         "p_away": round(p["p_away"], 3)})
-        except Exception:
-            pass
+    for (t1, t2, s1, s2), p in zip(group, group_preds):
+        act = "H" if s1 > s2 else ("D" if s1 == s2 else "A")
+        pred_out = max(("H", p["p_home"]), ("D", p["p_draw"]), ("A", p["p_away"]),
+                       key=lambda x: x[1])[0]
+        ih, id_, ia = (1, 0, 0) if act == "H" else ((0, 1, 0) if act == "D" else (0, 0, 1))
+        brier += (p["p_home"] - ih) ** 2 + (p["p_draw"] - id_) ** 2 + (p["p_away"] - ia) ** 2
+        total += 1
+        correct += act == pred_out
+        rows.append({"match": f"{t1} vs {t2}", "score": f"{s1}–{s2}",
+                     "predicted": pred_out, "actual": act, "correct": act == pred_out,
+                     "p_home": round(p["p_home"], 3), "p_draw": round(p["p_draw"], 3),
+                     "p_away": round(p["p_away"], 3)})
+    for (t1, t2, winner), p in zip(ko, ko_preds):
+        pred_w = t1 if p["p_home"] >= p["p_away"] else t2
+        total += 1
+        correct += winner == pred_w
+        brier += (p["p_home"] + p["p_draw"] * 0.5 - (1 if winner == t1 else 0)) ** 2
+        rows.append({"match": f"{t1} vs {t2}", "score": "KO",
+                     "predicted": "H" if pred_w == t1 else "A",
+                     "actual": "H" if winner == t1 else "A", "correct": winner == pred_w,
+                     "p_home": round(p["p_home"], 3), "p_draw": round(p["p_draw"], 3),
+                     "p_away": round(p["p_away"], 3)})
     return {
         "correct": correct, "total": total,
         "accuracy": round(correct / total, 3) if total else 0.0,

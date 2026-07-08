@@ -35,18 +35,20 @@ def get_calibration(state: AppState = Depends(get_state)):
         state.group_results, state.ko_results, api_finished, state.config
     )
 
-    rows: list[tuple] = []
-    for t1, t2, s1, s2 in group_results:
-        try:
-            p = state.predictor.predict(t1, t2, neutral=True, injuries={})
-            rows.append((
-                p["p_home"], p["p_draw"], p["p_away"],
-                1 if s1 > s2 else 0,
-                1 if s1 == s2 else 0,
-                1 if s1 < s2 else 0,
-            ))
-        except Exception:
-            pass
+    known = state.predictor.ratings
+    played = [(t1, t2, s1, s2) for t1, t2, s1, s2 in group_results
+              if t1 in known and t2 in known]
+    preds = state.predictor.predict_many([(t1, t2, True) for t1, t2, _, _ in played]) \
+        if played else []
+    rows: list[tuple] = [
+        (
+            p["p_home"], p["p_draw"], p["p_away"],
+            1 if s1 > s2 else 0,
+            1 if s1 == s2 else 0,
+            1 if s1 < s2 else 0,
+        )
+        for (_, _, s1, s2), p in zip(played, preds)
+    ]
 
     if not rows:
         return {"n_matches": 0, "calibration": {}, "brier": {}, "confidence_distribution": {}}

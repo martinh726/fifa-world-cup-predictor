@@ -31,6 +31,20 @@ def get_state() -> AppState:
     return _state
 
 
+def predictor_for(state: AppState, squad_strength: float) -> MatchPredictor:
+    """Predictor honoring the requested squad_strength without an expensive rebuild.
+
+    Returns the singleton when the strength matches (within slider tolerance);
+    otherwise a cheap shallow clone that shares all heavy state.
+    """
+    p = state.predictor
+    if p is None:
+        raise RuntimeError("Predictor not ready")
+    if abs(squad_strength - p.squad_adjustment_strength) <= 0.005:
+        return p
+    return p.with_strength(squad_strength)
+
+
 def initialize(squad_strength: float = 0.18, force_download: bool = False) -> None:
     """Load data and build the predictor singleton. Called once at startup."""
     download_data(force=force_download)

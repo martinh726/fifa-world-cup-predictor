@@ -20,6 +20,17 @@ def _api_key() -> str | None:
     return get_api_key()
 
 
+def _batch_predictions(predictor, pairs: list[tuple[str, str]]) -> list[dict | None]:
+    """One batched model call for many (home, away) pairs; None per unknown team pair."""
+    if predictor is None:
+        return [None] * len(pairs)
+    known = predictor.ratings
+    valid = [(h, a) for h, a in pairs if h in known and a in known]
+    preds = predictor.predict_many([(h, a, True) for h, a in valid]) if valid else []
+    by_pair = {pair: p for pair, p in zip(valid, preds)}
+    return [by_pair.get(pair) for pair in pairs]
+
+
 @router.get("/live")
 def get_live(state: AppState = Depends(get_state)):
     api_key = _api_key()
@@ -42,32 +53,31 @@ def get_live(state: AppState = Depends(get_state)):
         except Exception:
             pass
 
+    live_preds = _batch_predictions(
+        state.predictor, [(m["home"], m["away"]) for m in live_matches])
+
     enriched = []
-    for m in live_matches:
+    for m, prematch_pred in zip(live_matches, live_preds):
         home_t, away_t = m["home"], m["away"]
         prematch = None
         live_prob = None
-        if state.predictor:
-            try:
-                prematch_pred = state.predictor.predict(home_t, away_t, neutral=True, injuries={})
-                prematch = {
-                    "p_home": round(prematch_pred["p_home"], 4),
-                    "p_draw": round(prematch_pred["p_draw"], 4),
-                    "p_away": round(prematch_pred["p_away"], 4),
-                    "lambda_home": round(prematch_pred["lambda_home"], 3),
-                    "lambda_away": round(prematch_pred["lambda_away"], 3),
-                }
-                lp = ingame_probs(
-                    prematch_pred["lambda_home"], prematch_pred["lambda_away"],
-                    m["score_home"], m["score_away"], m["minute"],
-                )
-                live_prob = {
-                    "p_home": round(lp["p_home"], 4),
-                    "p_draw": round(lp["p_draw"], 4),
-                    "p_away": round(lp["p_away"], 4),
-                }
-            except Exception:
-                pass
+        if prematch_pred is not None:
+            prematch = {
+                "p_home": round(prematch_pred["p_home"], 4),
+                "p_draw": round(prematch_pred["p_draw"], 4),
+                "p_away": round(prematch_pred["p_away"], 4),
+                "lambda_home": round(prematch_pred["lambda_home"], 3),
+                "lambda_away": round(prematch_pred["lambda_away"], 3),
+            }
+            lp = ingame_probs(
+                prematch_pred["lambda_home"], prematch_pred["lambda_away"],
+                m["score_home"], m["score_away"], m["minute"],
+            )
+            live_prob = {
+                "p_home": round(lp["p_home"], 4),
+                "p_draw": round(lp["p_draw"], 4),
+                "p_away": round(lp["p_away"], 4),
+            }
 
         # Fetch live stats from API-Football when available (120 s per-fixture cache)
         match_stats = None
@@ -84,18 +94,16 @@ def get_live(state: AppState = Depends(get_state)):
     if not live_matches:
         try:
             todays_upcoming = fetch_todays_matches(api_key)
-            # Add pre-match predictions for upcoming
-            for um in todays_upcoming:
-                if state.predictor and um.get("home") and um.get("away"):
-                    try:
-                        p = state.predictor.predict(um["home"], um["away"], neutral=True, injuries={})
-                        um["prediction"] = {
-                            "p_home": round(p["p_home"], 4),
-                            "p_draw": round(p["p_draw"], 4),
-                            "p_away": round(p["p_away"], 4),
-                        }
-                    except Exception:
-                        um["prediction"] = None
+            # Add pre-match predictions for upcoming (one batched call)
+            up_preds = _batch_predictions(
+                state.predictor,
+                [(um.get("home", ""), um.get("away", "")) for um in todays_upcoming])
+            for um, p in zip(todays_upcoming, up_preds):
+                um["prediction"] = {
+                    "p_home": round(p["p_home"], 4),
+                    "p_draw": round(p["p_draw"], 4),
+                    "p_away": round(p["p_away"], 4),
+                } if p is not None else None
         except Exception:
             pass
 
@@ -125,22 +133,16 @@ def get_schedule(days: int = Query(30, ge=1, le=90), state: AppState = Depends(g
     except Exception as e:
         return {"matches": [], "error": str(e)}
 
-    matches = []
-    for m in raw:
-        if not m.get("home") or not m.get("away"):
-            continue
-        prediction = None
-        if state.predictor:
-            try:
-                p = state.predictor.predict(m["home"], m["away"], neutral=True, injuries={})
-                prediction = {
-                    "p_home": round(p["p_home"], 4),
-                    "p_draw": round(p["p_draw"], 4),
-                    "p_away": round(p["p_away"], 4),
-                }
-            except Exception:
-                pass
-        matches.append({**m, "prediction": prediction})
+    upcoming = [m for m in raw if m.get("home") and m.get("away")]
+    preds = _batch_predictions(state.predictor, [(m["home"], m["away"]) for m in upcoming])
+    matches = [
+        {**m, "prediction": {
+            "p_home": round(p["p_home"], 4),
+            "p_draw": round(p["p_draw"], 4),
+            "p_away": round(p["p_away"], 4),
+        } if p is not None else None}
+        for m, p in zip(upcoming, preds)
+    ]
 
     result = {"matches": matches, "days": days, "error": None}
     schedule_cache.set(result)

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.bracket_svg import build_live_bracket
-from backend.deps import AppState, get_state
+from backend.deps import AppState, get_state, predictor_for
 from backend.utils import compute_accuracy, merge_api_finished
 from src.livefeed import fetch_finished_matches, get_api_key
 
@@ -32,13 +32,7 @@ class SimulateRequest(BaseModel):
 def _run_sync(req: SimulateRequest, state: AppState) -> dict[str, Any]:
     from src.simulate import TournamentSimulator
 
-    predictor = state.predictor
-    if abs(req.squad_strength - predictor.squad_adjustment_strength) > 0.005:
-        from src.predict import MatchPredictor
-        predictor = MatchPredictor(
-            results=state.results,
-            squad_adjustment_strength=req.squad_strength,
-        )
+    predictor = predictor_for(state, req.squad_strength)
 
     sim = TournamentSimulator(predictor, state.config, n_sims=req.n_sims)
 
