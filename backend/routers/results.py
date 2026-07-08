@@ -7,9 +7,10 @@ from fastapi import APIRouter, Depends
 
 from backend.cache import results_cache
 from backend.deps import AppState, get_state
-from backend.utils import (compute_goal_stats, is_best_third_eliminated,
-                            merge_api_finished, qual_scenario, third_place_race)
-from src.livefeed import fetch_finished_matches, get_api_key
+from backend.utils import (compute_goal_stats, fetch_api_finished,
+                            is_best_third_eliminated, merge_api_finished,
+                            qual_scenario, third_place_race)
+from src.livefeed import get_api_key
 from src.tournament import standings
 
 router = APIRouter()
@@ -92,13 +93,7 @@ def get_results(state: AppState = Depends(get_state)):
     if cached is not None:
         return cached
 
-    api_key = get_api_key()
-    api_finished: list = []
-    if api_key:
-        try:
-            api_finished = fetch_finished_matches(api_key)
-        except Exception:
-            pass
+    api_finished = fetch_api_finished(get_api_key())
 
     group_results, ko_results = merge_api_finished(
         state.group_results, state.ko_results, api_finished, state.config

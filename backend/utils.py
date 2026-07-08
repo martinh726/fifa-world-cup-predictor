@@ -1,10 +1,25 @@
 """Shared utility functions for the backend routers."""
 from __future__ import annotations
 
+import logging
 from itertools import combinations, product as _iprod
 
 import numpy as np
 import pandas as pd
+
+log = logging.getLogger(__name__)
+
+
+def fetch_api_finished(api_key: str | None) -> list:
+    """Finished matches from the live API; logs and returns [] on any failure."""
+    if not api_key:
+        return []
+    from src.livefeed import fetch_finished_matches
+    try:
+        return fetch_finished_matches(api_key)
+    except Exception as e:
+        log.warning("fetch_finished_matches failed: %s", e)
+        return []
 
 
 def merge_api_finished(group_results: list, ko_results: list,

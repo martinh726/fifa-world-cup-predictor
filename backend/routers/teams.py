@@ -1,11 +1,24 @@
 """Teams and tournament config endpoints."""
 from __future__ import annotations
 
+import datetime
+from pathlib import Path
+
 from fastapi import APIRouter, Depends
 
 from backend.deps import AppState, get_state
 
 router = APIRouter()
+
+MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "models" / "model.joblib"
+
+
+def model_last_trained() -> str | None:
+    """ISO timestamp of the model artifact's last modification, or None."""
+    if not MODEL_PATH.exists():
+        return None
+    mtime = MODEL_PATH.stat().st_mtime
+    return datetime.datetime.fromtimestamp(mtime, tz=datetime.timezone.utc).isoformat()
 
 
 @router.get("/teams")
@@ -20,17 +33,24 @@ def get_teams(state: AppState = Depends(get_state)):
         "groups": config.get("groups", {}),
         "hosts": config.get("hosts", []),
         "data_through": data_through,
+        "model_trained_through": (str(state.predictor.trained_through)[:10]
+                                  if state.predictor else None),
+        "model_last_trained": model_last_trained(),
     }
 
 
 @router.post("/refresh")
-def refresh_data(state: AppState = Depends(get_state)):
+def refresh_data():
     from backend.deps import refresh
-    from backend.cache import live_cache, results_cache, schedule_cache
+    from backend.cache import (calibration_cache, live_cache, results_cache,
+                               schedule_cache)
     refresh()
     live_cache.invalidate()
     results_cache.invalidate()
     schedule_cache.invalidate()
+    calibration_cache.invalidate()
+    # refresh() swapped in a new state snapshot — re-fetch it
+    state = get_state()
     data_through = (str(state.results["date"].max().date())
                     if not state.results.empty else "unknown")
     return {"status": "ok", "data_through": data_through}

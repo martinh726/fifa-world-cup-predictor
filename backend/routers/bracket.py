@@ -6,8 +6,8 @@ from fastapi.responses import Response
 
 from backend.bracket_svg import build_live_bracket, render_bracket_svg
 from backend.deps import AppState, get_state
-from backend.utils import merge_api_finished
-from src.livefeed import fetch_finished_matches, get_api_key
+from backend.utils import fetch_api_finished, merge_api_finished
+from src.livefeed import get_api_key
 
 router = APIRouter()
 
@@ -28,13 +28,7 @@ def get_bracket_svg(
             bracket = {int(k): v for k, v in bracket.items()}
     else:
         # Live bracket from actual results
-        api_key = get_api_key()
-        api_finished: list = []
-        if api_key:
-            try:
-                api_finished = fetch_finished_matches(api_key)
-            except Exception:
-                pass
+        api_finished = fetch_api_finished(get_api_key())
         group_results, ko_results = merge_api_finished(
             state.group_results, state.ko_results, api_finished, state.config
         )

@@ -4,8 +4,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from backend.deps import AppState, get_state
-from backend.utils import merge_api_finished, remaining_matches
-from src.livefeed import fetch_finished_matches, get_api_key
+from backend.utils import fetch_api_finished, merge_api_finished, remaining_matches
+from src.livefeed import get_api_key
 from src.tournament import standings
 
 router = APIRouter()
@@ -41,13 +41,7 @@ def _fixture_scenarios(teams: list, played: list, fix: tuple) -> dict:
 
 @router.get("/tiebreaker")
 def get_tiebreaker(state: AppState = Depends(get_state)):
-    api_key = get_api_key()
-    api_finished: list = []
-    if api_key:
-        try:
-            api_finished = fetch_finished_matches(api_key)
-        except Exception:
-            pass
+    api_finished = fetch_api_finished(get_api_key())
     group_results, _ = merge_api_finished(
         state.group_results, state.ko_results, api_finished, state.config
     )

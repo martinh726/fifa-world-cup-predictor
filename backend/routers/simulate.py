@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.bracket_svg import build_live_bracket
+from backend import deps
 from backend.deps import AppState, get_state, predictor_for
-from backend.utils import compute_accuracy, merge_api_finished
-from src.livefeed import fetch_finished_matches, get_api_key
+from backend.utils import compute_accuracy, fetch_api_finished, merge_api_finished
+from src.livefeed import get_api_key
 
 router = APIRouter()
 
@@ -37,13 +38,7 @@ def _run_sync(req: SimulateRequest, state: AppState) -> dict[str, Any]:
     sim = TournamentSimulator(predictor, state.config, n_sims=req.n_sims)
 
     # Merge live API results with the CSV baseline — same pattern as /api/results
-    api_key = get_api_key()
-    api_finished: list = []
-    if api_key:
-        try:
-            api_finished = fetch_finished_matches(api_key)
-        except Exception:
-            pass
+    api_finished = fetch_api_finished(get_api_key())
     live_group, live_ko = merge_api_finished(
         state.group_results, state.ko_results, api_finished, state.config
     )
@@ -117,5 +112,5 @@ async def run_simulation(req: SimulateRequest, state: AppState = Depends(get_sta
 
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, _run_sync, req, state)
-    state.last_sim_result = result
+    deps.set_last_sim_result(result)
     return result

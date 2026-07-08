@@ -1,14 +1,17 @@
 """Team Focus endpoint."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.deps import AppState, get_state
-from backend.utils import merge_api_finished, qual_scenario
-from src.livefeed import fetch_finished_matches, fetch_scheduled_matches, get_api_key
+from backend.utils import fetch_api_finished, merge_api_finished, qual_scenario
+from src.livefeed import fetch_scheduled_matches, get_api_key
 from src.tournament import standings
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 @router.get("/team/{name}")
@@ -21,12 +24,7 @@ def get_team(name: str, state: AppState = Depends(get_state)):
 
     # Merge API results
     api_key = get_api_key()
-    api_finished: list = []
-    if api_key:
-        try:
-            api_finished = fetch_finished_matches(api_key)
-        except Exception:
-            pass
+    api_finished = fetch_api_finished(api_key)
     group_results, ko_results = merge_api_finished(
         state.group_results, state.ko_results, api_finished, config
     )
@@ -119,11 +117,11 @@ def get_team(name: str, state: AppState = Depends(get_state)):
                                 "p_draw": round(p["p_draw"], 4),
                                 "p_away": round(p["p_away"], 4),
                             }
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            log.warning("next-match prediction failed for %s: %s", name, e)
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("fetch_scheduled_matches failed for %s: %s", name, e)
 
     return {
         "team": name,

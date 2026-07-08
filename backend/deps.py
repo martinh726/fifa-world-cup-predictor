@@ -21,10 +21,10 @@ class AppState:
     ko_results: list = field(default_factory=list)
     predictor: MatchPredictor | None = None
     last_sim_result: dict[str, Any] | None = None
-    _lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 _state = AppState()
+_build_lock = threading.Lock()
 
 
 def get_state() -> AppState:
@@ -45,28 +45,51 @@ def predictor_for(state: AppState, squad_strength: float) -> MatchPredictor:
     return p.with_strength(squad_strength)
 
 
-def initialize(squad_strength: float = 0.18, force_download: bool = False) -> None:
-    """Load data and build the predictor singleton. Called once at startup."""
+def set_last_sim_result(result: dict[str, Any]) -> None:
+    _state.last_sim_result = result
+
+
+def _build_state(squad_strength: float, force_download: bool) -> AppState:
+    """Build a complete, self-consistent AppState from freshly loaded data."""
     download_data(force=force_download)
-    _state.config = load_wc2026()
-    _state.results = load_results(download=False)
-    _state.shootouts = load_shootouts()
-    _state.group_results, _state.ko_results = split_real_results(
-        _state.results, _state.shootouts, _state.config
-    )
-    _state.predictor = MatchPredictor(
-        results=_state.results,
+    config = load_wc2026()
+    results = load_results(download=False)
+    shootouts = load_shootouts()
+    group_results, ko_results = split_real_results(results, shootouts, config)
+    predictor = MatchPredictor(
+        results=results,
         squad_adjustment_strength=squad_strength,
     )
+    return AppState(
+        config=config,
+        results=results,
+        shootouts=shootouts,
+        group_results=group_results,
+        ko_results=ko_results,
+        predictor=predictor,
+    )
+
+
+def initialize(squad_strength: float = 0.18, force_download: bool = False) -> None:
+    """Load data and build the predictor singleton. Called once at startup."""
+    global _state
+    _state = _build_state(squad_strength, force_download)
 
 
 def refresh(squad_strength: float = 0.18) -> None:
-    """Re-download the latest results/shootouts data and rebuild the predictor. Thread-safe.
+    """Re-download the latest results/shootouts data and rebuild the predictor.
 
     Unlike startup initialize(), this forces a fresh download — otherwise
     download_data() would skip re-fetching results.csv/shootouts.csv since
     the local copies already exist, leaving group standings and the live
     bracket stuck on whatever snapshot was first downloaded.
+
+    The new state is built fully off to the side and then swapped in with a
+    single reference assignment, so in-flight requests always see one
+    consistent snapshot (old or new, never a mix).
     """
-    with _state._lock:
-        initialize(squad_strength, force_download=True)
+    global _state
+    with _build_lock:
+        new = _build_state(squad_strength, force_download=True)
+        new.last_sim_result = _state.last_sim_result
+        _state = new

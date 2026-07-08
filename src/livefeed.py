@@ -20,6 +20,28 @@ _log = logging.getLogger(__name__)
 _BASE = "https://api.football-data.org/v4"
 _COMPETITION = "WC"
 
+# Per-source health registry surfaced by GET /api/status.
+_feed_status: dict[str, dict] = {}
+
+
+def _record(source: str, ok: bool, error: str | None = None,
+            rate_limited: bool = False) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    entry = _feed_status.setdefault(source, {"last_success": None})
+    entry.update({
+        "ok": ok,
+        "error": None if ok else error,
+        "rate_limited": rate_limited,
+        "last_checked": now,
+    })
+    if ok:
+        entry["last_success"] = now
+
+
+def get_feed_status() -> dict[str, dict]:
+    """Snapshot of each external data source's last-known health."""
+    return {k: dict(v) for k, v in _feed_status.items()}
+
 # football-data.org uses slightly different spellings — map them to our canonical names.
 _EXTRA_ALIASES: dict[str, str] = {
     "Korea Republic": "South Korea",
@@ -155,8 +177,11 @@ def fetch_live_matches(api_key: str) -> tuple[list[dict], str | None]:
             except Exception as e:
                 first_error = first_error or str(e)
 
+    err = first_error if not results else None
+    _record("football_data", ok=err is None, error=err,
+            rate_limited=bool(err and "Rate limited" in err))
     # Only surface an error when we have nothing to show
-    return results, (first_error if not results else None)
+    return results, err
 
 
 def fetch_finished_matches(api_key: str) -> list[dict]:
@@ -173,9 +198,17 @@ def fetch_finished_matches(api_key: str) -> list[dict]:
                 params={"status": "FINISHED"},
                 timeout=15,
             )
+            if resp.status_code == 429:
+                _record("football_data", ok=False, error="Rate limited",
+                        rate_limited=True)
+                _log.warning("fetch_finished_matches rate-limited (429)")
+                return []
             resp.raise_for_status()
-            return [_parse_match(m, aliases) for m in resp.json().get("matches", [])]
+            out = [_parse_match(m, aliases) for m in resp.json().get("matches", [])]
+            _record("football_data", ok=True)
+            return out
     except Exception as e:
+        _record("football_data", ok=False, error=str(e))
         _log.warning("fetch_finished_matches failed: %s", e)
         return []
 
@@ -191,12 +224,18 @@ def fetch_todays_matches(api_key: str) -> list[dict]:
             headers=_headers(api_key),
             timeout=10,
         )
+        if resp.status_code == 429:
+            _record("football_data", ok=False, error="Rate limited", rate_limited=True)
+            _log.warning("fetch_todays_matches rate-limited (429)")
+            return []
         resp.raise_for_status()
         matches = resp.json().get("matches", [])
+        _record("football_data", ok=True)
         # API returns TIMED records under SCHEDULED umbrella; filter out non-upcoming
         return [_parse_match(m, aliases) for m in matches
                 if m.get("status") in ("TIMED", "SCHEDULED")]
     except Exception as e:
+        _record("football_data", ok=False, error=str(e))
         _log.warning("fetch_todays_matches failed: %s", e)
         return []
 
@@ -270,8 +309,10 @@ def fetch_apifootball_live(api_key: str) -> dict[str, dict]:
                 "status_short": short,
                 "fixture_id": fixture_id,
             }
+        _record("api_football", ok=True)
         return results
     except Exception as e:
+        _record("api_football", ok=False, error=str(e))
         _log.warning("fetch_apifootball_live failed: %s", e)
         return {}
 
@@ -360,10 +401,18 @@ def fetch_scheduled_matches(api_key: str, days: int = 30) -> list[dict]:
             headers=_headers(api_key),
             timeout=10,
         )
+        if resp.status_code == 429:
+            _record("football_data", ok=False, error="Rate limited", rate_limited=True)
+            raise RuntimeError("Rate limited — try again in a moment.")
         resp.raise_for_status()
-        return [_parse_match(m, aliases) for m in resp.json().get("matches", [])
-                if m.get("status") in ("TIMED", "SCHEDULED")]
+        out = [_parse_match(m, aliases) for m in resp.json().get("matches", [])
+               if m.get("status") in ("TIMED", "SCHEDULED")]
+        _record("football_data", ok=True)
+        return out
+    except RuntimeError:
+        raise
     except Exception as e:
+        _record("football_data", ok=False, error=str(e))
         _log.warning("fetch_scheduled_matches failed: %s", e)
         return []
 

@@ -7,8 +7,8 @@ from pydantic import BaseModel
 from backend.cache import results_cache
 from backend.deps import AppState, get_state
 from backend.routers.results import _apply_best_third_elimination, _build_standings_data
-from backend.utils import merge_api_finished, third_place_race
-from src.livefeed import fetch_finished_matches, get_api_key
+from backend.utils import fetch_api_finished, merge_api_finished, third_place_race
+from src.livefeed import get_api_key
 
 router = APIRouter()
 
@@ -51,13 +51,7 @@ def what_if(req: WhatIfRequest, state: AppState = Depends(get_state)):
             for r in cached["group_results"]
         ]
     else:
-        api_key = get_api_key()
-        api_finished: list = []
-        if api_key:
-            try:
-                api_finished = fetch_finished_matches(api_key)
-            except Exception:
-                pass
+        api_finished = fetch_api_finished(get_api_key())
         real_group_results, _ = merge_api_finished(
             state.group_results, state.ko_results, api_finished, state.config
         )

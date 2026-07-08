@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,6 +13,12 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+log = logging.getLogger(__name__)
+
 from backend import deps
 from backend.routers import bracket, live, predict, results, teams, team
 from backend.routers import simulate, what_if, tiebreaker, calibration
@@ -20,9 +27,9 @@ from backend.routers import simulate, what_if, tiebreaker, calibration
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     squad_strength = float(os.environ.get("SQUAD_STRENGTH", "0.18"))
-    print(f"[startup] Loading data and building predictor (squad_strength={squad_strength})...")
+    log.info("Loading data and building predictor (squad_strength=%s)...", squad_strength)
     deps.initialize(squad_strength=squad_strength)
-    print("[startup] Ready.")
+    log.info("Ready.")
     yield
 
 

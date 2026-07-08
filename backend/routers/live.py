@@ -1,6 +1,7 @@
 """Live matches and schedule endpoints."""
 from __future__ import annotations
 
+import logging
 import os
 
 from fastapi import APIRouter, Depends, Query
@@ -13,6 +14,7 @@ from src.livefeed import (fetch_apifootball_live, fetch_apifootball_stats,
 from src.predict import ingame_probs
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 def _api_key() -> str | None:
@@ -50,8 +52,8 @@ def get_live(state: AppState = Depends(get_state)):
     if af_key:
         try:
             af_live = fetch_apifootball_live(af_key)
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("fetch_apifootball_live failed: %s", e)
 
     live_preds = _batch_predictions(
         state.predictor, [(m["home"], m["away"]) for m in live_matches])
@@ -85,8 +87,9 @@ def get_live(state: AppState = Depends(get_state)):
         if af_key and af_match and af_match.get("fixture_id"):
             try:
                 match_stats = fetch_apifootball_stats(af_key, af_match["fixture_id"])
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning("fetch_apifootball_stats failed for %s v %s: %s",
+                            home_t, away_t, e)
 
         enriched.append({**m, "prematch": prematch, "live_probs": live_prob, "match_stats": match_stats})
 
@@ -104,8 +107,8 @@ def get_live(state: AppState = Depends(get_state)):
                     "p_draw": round(p["p_draw"], 4),
                     "p_away": round(p["p_away"], 4),
                 } if p is not None else None
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("fetch_todays_matches failed: %s", e)
 
     import datetime
     result = {
@@ -131,6 +134,7 @@ def get_schedule(days: int = Query(30, ge=1, le=90), state: AppState = Depends(g
     try:
         raw = fetch_scheduled_matches(api_key, days=days)
     except Exception as e:
+        log.warning("fetch_scheduled_matches failed: %s", e)
         return {"matches": [], "error": str(e)}
 
     upcoming = [m for m in raw if m.get("home") and m.get("away")]
