@@ -1,9 +1,9 @@
 import { api } from './client'
 import type {
-  CalibrationResponse, LiveBracketResponse, LiveResponse, OddsHistoryResponse,
-  PredictResponse, ResultsResponse, ScheduleMatch, SimulateRequest,
-  SimulateResponse, StatusResponse, TeamResponse, TeamsResponse,
-  TiebreakerResponse, WhatIfRequest, WhatIfResponse,
+  CalibrationResponse, FinalFourResponse, LiveBracketResponse, LiveResponse,
+  OddsHistoryResponse, PredictResponse, ResultsResponse, ScheduleMatch,
+  SimulateRequest, SimulateResponse, StatusResponse, TeamResponse,
+  TeamsResponse, TiebreakerResponse, WhatIfRequest, WhatIfResponse,
 } from './types'
 
 export const fetchTeams = (): Promise<TeamsResponse> =>
@@ -61,5 +61,8 @@ export const fetchBracketLive = (): Promise<LiveBracketResponse> =>
 
 export const fetchOddsHistory = (): Promise<OddsHistoryResponse> =>
   api.get('/odds-history').then(r => r.data)
+
+export const fetchFinalFour = (): Promise<FinalFourResponse> =>
+  api.get('/final-four').then(r => r.data)
 
 export * from './types'

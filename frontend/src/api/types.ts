@@ -361,3 +361,39 @@ export interface TeamResponse {
   bracket_path: { stage: string; match: number; opponent: string; win_prob: number | null; winner: string }[] | null
   next_match: ScheduleMatch | null
 }
+
+export interface FinalFourMatch {
+  match: number
+  team1: string
+  team2: string
+  actual: boolean
+  winner: string | null
+}
+
+export interface FinalFourCandidate {
+  team: string
+  prob: number
+}
+
+export interface FinalFourSemifinal extends FinalFourMatch {
+  candidates: FinalFourCandidate[]
+}
+
+export interface FinalFourPairing {
+  team1: string
+  team2: string
+  pairing_prob: number
+  p_team1_win_final: number
+  p_team1_champion: number
+  p_team2_champion: number
+  h2h: H2HData
+}
+
+export interface FinalFourResponse {
+  quarterfinals: FinalFourMatch[]
+  semifinals: FinalFourSemifinal[]
+  final_match: number
+  final_decided: boolean
+  champion: string | null
+  pairings: FinalFourPairing[]
+}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom'
 import {
-  Target, Dices, Radio, BarChart3, Flag, WandSparkles, CalendarDays, Scale, Menu,
+  Target, Dices, Radio, BarChart3, Flag, WandSparkles, CalendarDays, Scale, Menu, Trophy,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from './utils/cn'
@@ -15,10 +15,12 @@ import { TeamFocus } from './pages/TeamFocus'
 import { ScenarioBuilder } from './pages/ScenarioBuilder'
 import { Schedule } from './pages/Schedule'
 import { Tiebreaker } from './pages/Tiebreaker'
+import { FinalFour } from './pages/FinalFour'
 
 const NAV: { to: string; label: string; icon: LucideIcon; end?: boolean; live?: boolean }[] = [
   { to: '/', label: 'Predictor', icon: Target, end: true },
   { to: '/simulator', label: 'Simulator', icon: Dices },
+  { to: '/final-four', label: 'Final Four', icon: Trophy },
   { to: '/live', label: 'Live', icon: Radio, live: true },
   { to: '/tracker', label: 'Tracker', icon: BarChart3 },
   { to: '/team', label: 'Team Focus', icon: Flag },
@@ -116,6 +118,7 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<MatchPredictor />} />
                 <Route path="/simulator" element={<TournamentSimulator />} />
+                <Route path="/final-four" element={<FinalFour />} />
                 <Route path="/live" element={<Live />} />
                 <Route path="/tracker" element={<LiveTracker />} />
                 <Route path="/team" element={<TeamFocus />} />
