@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 from backend import deps
 from backend.routers import bracket, live, predict, results, teams, team
-from backend.routers import simulate, status, what_if, tiebreaker, calibration
+from backend.routers import simulate, status, what_if, tiebreaker, calibration, final_four
 
 
 @asynccontextmanager
@@ -72,6 +72,7 @@ app.include_router(what_if.router,     prefix="/api")
 app.include_router(tiebreaker.router,  prefix="/api")
 app.include_router(calibration.router, prefix="/api")
 app.include_router(status.router,      prefix="/api")
+app.include_router(final_four.router,  prefix="/api")
 
 # Serve built React frontend in production (when frontend/dist exists)
 _dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"

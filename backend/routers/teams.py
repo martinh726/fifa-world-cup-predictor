@@ -42,13 +42,14 @@ def get_teams(state: AppState = Depends(get_state)):
 @router.post("/refresh")
 def refresh_data():
     from backend.deps import refresh
-    from backend.cache import (calibration_cache, live_cache, results_cache,
-                               schedule_cache)
+    from backend.cache import (calibration_cache, final_four_cache, live_cache,
+                               results_cache, schedule_cache)
     refresh()
     live_cache.invalidate()
     results_cache.invalidate()
     schedule_cache.invalidate()
     calibration_cache.invalidate()
+    final_four_cache.invalidate()
     # refresh() swapped in a new state snapshot — re-fetch it
     state = get_state()
     data_through = (str(state.results["date"].max().date())
