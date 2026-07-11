@@ -14,6 +14,17 @@ ET_SHRINK = 0.35  # how much of the 90-minute edge survives extra time + penalti
 STAGES = ["group", "r32", "r16", "qf", "sf", "final", "champion"]
 
 
+def knockout_win_prob(p_home: float, p_draw: float, p_away: float,
+                      et_shrink: float = ET_SHRINK) -> float:
+    """P(home side advances a knockout tie), folding a drawn 90 minutes into
+    extra time + penalties. A draw is resolved by whichever side had the
+    stronger 90-minute edge, shrunk toward a coin flip since ET/pens are
+    closer to random than the run of play."""
+    q90 = p_home / max(p_home + p_away, 1e-9)
+    p_et = 0.5 + et_shrink * (q90 - 0.5)
+    return p_home + p_draw * p_et
+
+
 class TournamentSimulator:
     def __init__(self, predictor, config: dict, n_sims: int = 10000, seed: int = 42):
         self.predictor = predictor
@@ -38,10 +49,7 @@ class TournamentSimulator:
         self.score_mats: dict[tuple[str, str], np.ndarray] = {}
         for p in preds:
             i, j = self.idx[p["home"]], self.idx[p["away"]]
-            pa, pdr, pb = p["p_home"], p["p_draw"], p["p_away"]
-            q90 = pa / max(pa + pb, 1e-9)
-            p_et = 0.5 + ET_SHRINK * (q90 - 0.5)
-            self.p_win[i, j] = pa + pdr * p_et
+            self.p_win[i, j] = knockout_win_prob(p["p_home"], p["p_draw"], p["p_away"])
             self.p_win[j, i] = 1.0 - self.p_win[i, j]
             self.score_mats[(p["home"], p["away"])] = p["score_matrix"]
 

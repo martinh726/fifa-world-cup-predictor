@@ -270,6 +270,44 @@ def compute_goal_stats(all_played: list) -> dict:
     }
 
 
+def head_to_head(results: pd.DataFrame, team1: str, team2: str) -> dict:
+    """All-time W/D/L record and last-5 meetings between two teams."""
+    mask = (
+        ((results["home_team"] == team1) & (results["away_team"] == team2)) |
+        ((results["home_team"] == team2) & (results["away_team"] == team1))
+    )
+    h2h = results[mask].sort_values("date", ascending=False)
+    if h2h.empty:
+        return {"total": 0, "team1_wins": 0, "draws": 0, "team2_wins": 0, "last5": []}
+
+    team1_wins = int((
+        ((h2h["home_team"] == team1) & (h2h["home_score"] > h2h["away_score"])) |
+        ((h2h["away_team"] == team1) & (h2h["away_score"] > h2h["home_score"]))
+    ).sum())
+    draws = int((h2h["home_score"] == h2h["away_score"]).sum())
+    total = len(h2h)
+    team2_wins = total - team1_wins - draws
+
+    last5 = []
+    for _, r in h2h.head(5).iterrows():
+        last5.append({
+            "date": str(r["date"])[:10],
+            "home": r["home_team"],
+            "away": r["away_team"],
+            "score_home": int(r["home_score"]),
+            "score_away": int(r["away_score"]),
+            "tournament": str(r.get("tournament", "")),
+        })
+
+    return {
+        "total": total,
+        "team1_wins": team1_wins,
+        "draws": draws,
+        "team2_wins": team2_wins,
+        "last5": last5,
+    }
+
+
 def merge_ko_picks(live_ko: list, picks: list[tuple[str, str, str]]) -> list:
     """Combine user knockout picks with real decided KO results.
 
