@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 data/raw/
+data/odds_history.json
+data/retrain_state.json
 models/
 .streamlit/secrets.toml
 scripts/debug_api.py
