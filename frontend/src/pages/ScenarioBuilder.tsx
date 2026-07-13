@@ -426,9 +426,9 @@ export function ScenarioBuilder() {
   const [scenarios, setScenarios] = useState<Record<string, ScenarioScore>>({})
   const [result, setResult] = useState<WhatIfResponse | null>(null)
 
-  const { data: teamsData, isError: teamsError, refetch: refetchTeams } =
+  const { data: teamsData, isLoading: teamsLoading, isError: teamsError, refetch: refetchTeams } =
     useQuery({ queryKey: ['teams'], queryFn: fetchTeams })
-  const { data: resultsData, isError: resultsError, refetch: refetchResults } =
+  const { data: resultsData, isLoading: resultsLoading, isError: resultsError, refetch: refetchResults } =
     useQuery({ queryKey: ['results'], queryFn: fetchResults })
   const flags = teamsData?.flags ?? {}
 
@@ -552,6 +552,8 @@ export function ScenarioBuilder() {
         <KnockoutScenario flags={flags} />
       ) : (teamsError || resultsError) ? (
         <QueryError onRetry={() => { refetchTeams(); refetchResults() }} />
+      ) : (teamsLoading || resultsLoading) ? (
+        <CardSkeleton lines={6} />
       ) : allGroupsComplete ? (
         <GlassCard className="p-6 text-center text-ink-400">
           All group-stage matches have been played — the bracket is set.

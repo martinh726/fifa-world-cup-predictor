@@ -17,6 +17,7 @@ import { StatCard } from '../components/ui/StatCard'
 import { Button } from '../components/ui/Button'
 import { Collapsible } from '../components/ui/Collapsible'
 import { EmptyState } from '../components/ui/EmptyState'
+import { CardSkeleton } from '../components/ui/Skeleton'
 import { cn } from '../utils/cn'
 import { baseLayout, CHART_COLORS, CHART_CONFIG } from '../components/charts/plotlyTheme'
 import toast from 'react-hot-toast'
@@ -333,9 +334,7 @@ export function TournamentSimulator() {
         {showCalibration && calibData && calibData.n_matches === 0 && (
           <p className="text-ink-400 text-sm">No completed matches to compute calibration from.</p>
         )}
-        {showCalibration && !calibData && (
-          <p className="text-ink-400 text-sm">Loading calibration…</p>
-        )}
+        {showCalibration && !calibData && <CardSkeleton lines={3} />}
       </Collapsible>
     </div>
   )

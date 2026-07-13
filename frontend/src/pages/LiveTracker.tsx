@@ -2,8 +2,9 @@ import { useState, useMemo, Fragment } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   BarChart3, RefreshCw, Medal, Goal, CalendarDays, Trophy, CircleCheck, CircleX,
-  ListOrdered, Pencil,
+  ListOrdered, Pencil, X,
 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { useResultsPolling } from '../hooks/useResultsPolling'
 import { useAppStore } from '../store/useAppStore'
 import { FlagImage } from '../components/shared/FlagImage'
@@ -39,7 +40,7 @@ export function LiveTracker() {
   const [autoRefresh, setAutoRefresh] = useState(true)
 
   const { data: results, isLoading, isError, refetch, dataUpdatedAt } = useResultsPolling(autoRefresh)
-  const { manualResults, addManualResult, clearManualResults } = useAppStore()
+  const { manualResults, addManualResult, removeManualResult, clearManualResults } = useAppStore()
   const { data: teamsData } = useQuery({ queryKey: ['teams'], queryFn: fetchTeams })
   const { data: scheduleData } = useQuery({
     queryKey: ['schedule'],
@@ -371,8 +372,19 @@ export function LiveTracker() {
           <Button
             variant="blue"
             onClick={() => {
-              if (mT1 === mT2) return
-              if (groupOf[mT1] !== groupOf[mT2]) return
+              if (mT1 === mT2) {
+                toast.error('Pick two different teams.')
+                return
+              }
+              if (groupOf[mT1] !== groupOf[mT2]) {
+                toast.error(`${mT1} and ${mT2} aren't in the same group.`)
+                return
+              }
+              if (manualResults.some(r =>
+                (r.team1 === mT1 && r.team2 === mT2) || (r.team1 === mT2 && r.team2 === mT1))) {
+                toast.error(`A result for ${mT1} vs ${mT2} is already entered.`)
+                return
+              }
               addManualResult({ team1: mT1, team2: mT2, score1: mS1, score2: mS2 })
             }}
           >
@@ -383,8 +395,15 @@ export function LiveTracker() {
           <div className="space-y-1 text-xs mt-3">
             <div className="text-ink-400">{manualResults.length} manual result(s) active:</div>
             {manualResults.map((r, i) => (
-              <div key={i} className="flex items-center gap-2 text-ink-200">
+              <div key={i} className="flex items-center justify-between gap-2 text-ink-200">
                 <span>{r.team1} {r.score1}–{r.score2} {r.team2}</span>
+                <button
+                  onClick={() => removeManualResult(r.team1, r.team2)}
+                  className="text-ink-500 hover:text-host-red transition-colors cursor-pointer p-0.5"
+                  aria-label={`Remove ${r.team1} vs ${r.team2} result`}
+                >
+                  <X size={12} />
+                </button>
               </div>
             ))}
             <button

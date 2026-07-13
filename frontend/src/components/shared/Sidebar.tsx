@@ -74,6 +74,8 @@ function StatusIndicator() {
         ? (data && !data.football_data_key ? 'No API key' : 'Rate limited')
         : 'Live data OK'
 
+  const scheduler = data?.scheduler
+
   return (
     <div className="text-left bg-white/[0.04] rounded-xl border border-white/[0.07] px-3 py-2 space-y-1">
       <div className="flex items-center gap-2">
@@ -86,6 +88,26 @@ function StatusIndicator() {
       {data?.model.last_trained && (
         <div className="text-[10px] text-ink-500">
           Model trained {data.model.last_trained.slice(0, 10)}
+        </div>
+      )}
+      {scheduler?.enabled && (
+        <div className="text-[10px] text-ink-500 flex items-center gap-1.5">
+          {scheduler.retraining_now ? (
+            <span className="text-gold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" aria-hidden="true" />
+              Retraining now…
+            </span>
+          ) : scheduler.last_trained_at ? (
+            <span>Auto-retrained {scheduler.last_trained_at.slice(0, 10)}</span>
+          ) : (
+            <span>Auto-retrain armed, no run yet</span>
+          )}
+        </div>
+      )}
+      {scheduler?.last_error && (
+        <div className="text-[10px] text-host-red" title={scheduler.last_error}>
+          Scheduler error: {scheduler.last_error.slice(0, 60)}
+          {scheduler.last_error.length > 60 ? '…' : ''}
         </div>
       )}
     </div>

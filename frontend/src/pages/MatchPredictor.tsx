@@ -10,6 +10,7 @@ import { GlassCard } from '../components/ui/GlassCard'
 import { StatCard } from '../components/ui/StatCard'
 import { Collapsible } from '../components/ui/Collapsible'
 import { Skeleton, CardSkeleton } from '../components/ui/Skeleton'
+import { QueryError } from '../components/ui/QueryError'
 import { ProbabilityBar } from '../components/charts/ProbabilityBar'
 import { ScorelineHeatmap } from '../components/charts/ScorelineHeatmap'
 
@@ -77,7 +78,7 @@ export function MatchPredictor() {
   const sameHostStatus = (home in Object.fromEntries([...hosts].map(h => [h, true]))) === (away in Object.fromEntries([...hosts].map(h => [h, true])))
   const neutral = sameHostStatus
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['predict', home, away, neutral, squadStrength, injuries],
     queryFn: () => fetchPredict(home, away, neutral, squadStrength, injuries),
     enabled: !!(home && away && home !== away),
@@ -126,12 +127,7 @@ export function MatchPredictor() {
               <CardSkeleton lines={2} />
             </>
           )}
-          {error && (
-            <div className="flex items-center gap-2.5 text-sm rounded-xl px-4 py-3 text-danger bg-danger-bg border border-danger/25">
-              <TriangleAlert size={15} />
-              Prediction failed
-            </div>
-          )}
+          {isError && <QueryError title="Prediction failed" onRetry={() => refetch()} />}
 
           {data && (
             <>
