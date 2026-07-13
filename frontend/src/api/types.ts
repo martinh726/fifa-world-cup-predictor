@@ -350,13 +350,58 @@ export interface WhatIfResponse {
   r32_projections: R32Projection[]
 }
 
+export interface FormMatch {
+  date: string
+  opponent: string
+  goals_for: number
+  goals_against: number
+  result: 'W' | 'D' | 'L'
+  tournament: string
+}
+
+export interface TeamForm {
+  matches: FormMatch[]
+  streak: string
+}
+
+export interface WcHistory {
+  appearances: number
+  titles: number
+  matches_played: number
+  wins: number
+  draws: number
+  losses: number
+}
+
+export interface ShootoutMatch {
+  date: string
+  opponent: string
+  won: boolean
+}
+
+export interface ShootoutRecord {
+  played: number
+  won: number
+  lost: number
+  last: ShootoutMatch[]
+}
+
+export interface TeamSquadMetrics extends SquadMetrics {
+  composite_score: number
+}
+
 export interface TeamResponse {
   team: string
   group: string
   flag_code: string | null
   elo: number | null
+  elo_rank: number | null
+  squad: TeamSquadMetrics | null
   group_standing: StandingTeam[]
   wc2026_results: { opponent: string; goals_for: number; goals_against: number; result: string }[]
+  form: TeamForm
+  wc_history: WcHistory
+  shootouts: ShootoutRecord
   championship_odds: Record<string, number> | null
   bracket_path: { stage: string; match: number; opponent: string; win_prob: number | null; winner: string }[] | null
   next_match: ScheduleMatch | null

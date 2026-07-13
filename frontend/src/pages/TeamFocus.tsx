@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Flag, Trophy, ListOrdered, Goal, GitBranch, CalendarClock, CircleCheck, CircleX, Info,
+  TrendingUp, Users, Target,
 } from 'lucide-react'
 import { fetchTeam, fetchTeams } from '../api'
+import type { FormMatch } from '../api/types'
 import { useAppStore } from '../store/useAppStore'
 import { FlagImage } from '../components/shared/FlagImage'
 import { TeamSelect } from '../components/shared/TeamSelect'
@@ -13,7 +15,35 @@ import { PageHeader } from '../components/ui/PageHeader'
 import { GlassCard, SectionCard } from '../components/ui/GlassCard'
 import { StatCard } from '../components/ui/StatCard'
 import { CardSkeleton } from '../components/ui/Skeleton'
+import { QueryError } from '../components/ui/QueryError'
 import { formatLocalKickoff } from '../utils/time'
+
+const RESULT_COLOR: Record<FormMatch['result'], string> = {
+  W: 'var(--color-host-green)', D: 'var(--color-ink-400)', L: 'var(--color-host-red)',
+}
+
+function FormStrip({ matches }: { matches: FormMatch[] }) {
+  if (!matches.length) return <span className="text-ink-500 text-sm">No recent competitive matches.</span>
+  // matches arrive most-recent-first; display chronologically (oldest -> most recent, left to right)
+  const chrono = [...matches].reverse()
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {chrono.map((m, i) => {
+        const color = RESULT_COLOR[m.result]
+        return (
+          <span
+            key={i}
+            title={`${m.result === 'W' ? 'Won' : m.result === 'L' ? 'Lost' : 'Drew'} ${m.goals_for}-${m.goals_against} vs ${m.opponent} (${m.date})`}
+            className="w-7 h-7 grid place-items-center rounded-md text-xs font-display border cursor-default"
+            style={{ color, borderColor: color, backgroundColor: 'rgba(255,255,255,0.03)' }}
+          >
+            {m.result}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
 
 const STAGE_LABELS: Record<string, string> = {
   'P(R32)': 'Round of 32', 'P(R16)': 'Round of 16',
@@ -29,7 +59,7 @@ export function TeamFocus() {
   const { lastSimResult } = useAppStore()
   const [selectedTeam, setSelectedTeam] = useState('Argentina')
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['team', selectedTeam],
     queryFn: () => fetchTeam(selectedTeam),
     enabled: !!selectedTeam,
@@ -62,7 +92,7 @@ export function TeamFocus() {
       </div>
 
       {isLoading && <CardSkeleton lines={4} />}
-      {error && <div className="text-host-red text-sm">Failed to load team data</div>}
+      {isError && <QueryError title="Failed to load team data" onRetry={() => refetch()} />}
 
       {data && (
         <>
@@ -78,6 +108,7 @@ export function TeamFocus() {
                 <span className="text-ink-400 text-sm">Group {data.group}</span>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gold/10 border border-gold/35 text-gold text-xs font-bold">
                   Elo {data.elo?.toFixed(0) ?? '—'}
+                  {data.elo_rank && <span className="text-gold/70 font-semibold">· #{data.elo_rank} of 48</span>}
                 </span>
               </div>
               {!lastSimResult && (
@@ -86,8 +117,58 @@ export function TeamFocus() {
                   Run a simulation on the Simulator tab to see championship odds.
                 </div>
               )}
+              <div className="mt-3.5">
+                <div className="text-[11px] uppercase tracking-[0.16em] font-semibold text-ink-500 mb-1.5">
+                  Form (last {data.form.matches.length} competitive)
+                </div>
+                <FormStrip matches={data.form.matches} />
+              </div>
             </div>
           </GlassCard>
+
+          {/* Pedigree */}
+          <SectionCard icon={TrendingUp} accent="green" title="World Cup pedigree">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <StatCard label="Appearances" value={data.wc_history.appearances} accent="neutral" />
+              <StatCard
+                label="Titles"
+                value={data.wc_history.titles}
+                accent={data.wc_history.titles > 0 ? 'gold' : 'neutral'}
+              />
+              <StatCard
+                label="All-time WC record"
+                value={`${data.wc_history.wins}-${data.wc_history.draws}-${data.wc_history.losses}`}
+                sub={`${data.wc_history.matches_played} matches played`}
+                accent="blue"
+              />
+              <StatCard
+                label="Shootout record"
+                value={data.shootouts.played > 0 ? `${data.shootouts.won}-${data.shootouts.lost}` : '—'}
+                sub={data.shootouts.played > 0 ? `${data.shootouts.played} shootouts` : 'None on record'}
+                accent="red"
+              />
+            </div>
+          </SectionCard>
+
+          {/* Squad metrics (what the model uses) */}
+          {data.squad && (
+            <SectionCard icon={Users} accent="blue" title="Squad profile">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <StatCard label="Squad value" value={`€${data.squad.squad_value_m?.toLocaleString() ?? '—'}M`} accent="gold" />
+                <StatCard label="FIFA ranking" value={`#${data.squad.fifa_rank ?? '—'}`} accent="neutral" />
+                <StatCard label="Top-5 league %" value={`${((data.squad.league_idx ?? 0) * 100).toFixed(0)}%`} accent="blue" />
+                <StatCard label="Avg caps" value={data.squad.avg_caps?.toFixed(0) ?? '—'} accent="neutral" />
+                <StatCard label="Coach win rate" value={`${((data.squad.coach_wr ?? 0) * 100).toFixed(0)}%`} accent="green" />
+                <StatCard
+                  label="Composite score"
+                  value={data.squad.composite_score.toFixed(2)}
+                  sub="Feeds the model's squad-strength adjustment"
+                  accent={data.squad.composite_score >= 0 ? 'green' : 'red'}
+                  icon={Target}
+                />
+              </div>
+            </SectionCard>
+          )}
 
           {/* Championship odds */}
           {odds ? (
