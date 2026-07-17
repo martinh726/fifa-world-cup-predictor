@@ -16,6 +16,7 @@ import { ScenarioBuilder } from './pages/ScenarioBuilder'
 import { Schedule } from './pages/Schedule'
 import { Tiebreaker } from './pages/Tiebreaker'
 import { FinalFour } from './pages/FinalFour'
+import { About } from './pages/About'
 
 const NAV: { to: string; label: string; icon: LucideIcon; end?: boolean; live?: boolean }[] = [
   { to: '/', label: 'Predictor', icon: Target, end: true },
@@ -125,6 +126,7 @@ export default function App() {
                 <Route path="/scenarios" element={<ScenarioBuilder />} />
                 <Route path="/schedule" element={<Schedule />} />
                 <Route path="/tiebreaker" element={<Tiebreaker />} />
+                <Route path="/about" element={<About />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </ErrorBoundary>

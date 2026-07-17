@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { NavLink } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Trophy, Users, ClipboardList, RefreshCw, Plus, X } from 'lucide-react'
+import { Trophy, Users, ClipboardList, RefreshCw, Plus, X, BookOpen } from 'lucide-react'
 import { fetchBacktestReport, fetchStatus, fetchTeams, triggerRefresh } from '../../api'
 import { useAppStore } from '../../store/useAppStore'
 import { BrandArcPattern } from './BrandArcPattern'
@@ -288,6 +289,14 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         {/* Footer */}
         <div className="text-center space-y-2.5 pb-1">
           <StatusIndicator />
+          <NavLink
+            to="/about"
+            onClick={onClose}
+            className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-ink-400 hover:text-gold transition-colors py-1"
+          >
+            <BookOpen size={12} />
+            How it works
+          </NavLink>
           <div className="flex h-0.5 rounded-full overflow-hidden opacity-70" aria-hidden="true">
             <div className="flex-1 bg-host-red" />
             <div className="flex-1 bg-host-blue-bright" />
