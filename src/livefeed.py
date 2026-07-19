@@ -183,7 +183,8 @@ def fetch_live_matches(api_key: str) -> tuple[list[dict], str | None]:
         session.headers.update(_headers(api_key))
 
         # Primary: competition-specific endpoint
-        for status in ("IN_PLAY", "PAUSED"):
+        # football-data.org uses "LIVE" (undocumented) in addition to "IN_PLAY"
+        for status in ("IN_PLAY", "PAUSED", "LIVE"):
             try:
                 resp = session.get(
                     f"{_BASE}/competitions/{_COMPETITION}/matches",
@@ -302,8 +303,11 @@ def fetch_todays_matches(api_key: str) -> list[dict]:
         statuses = [m.get("status") for m in matches]
         _log.warning("fetch_todays_matches: %d match(es) in [%s, %s] statuses=%s",
                      len(matches), date_from, date_to, statuses)
+        # "LIVE" is football-data.org's undocumented alias for IN_PLAY; include it
+        # here as a safety net so it appears in upcoming until fetch_live_matches
+        # picks it up on the next poll.
         return [_parse_match(m, aliases) for m in matches
-                if m.get("status") in ("TIMED", "SCHEDULED")]
+                if m.get("status") in ("TIMED", "SCHEDULED", "LIVE")]
     except Exception as e:
         _record("football_data", ok=False, error=str(e))
         _log.warning("fetch_todays_matches failed: %s", e)
