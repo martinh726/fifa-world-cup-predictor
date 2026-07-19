@@ -169,9 +169,10 @@ def _parse_match(m: dict, aliases: dict[str, str]) -> dict:
 def fetch_live_matches(api_key: str) -> tuple[list[dict], str | None]:
     """Return (live_matches, error_or_None) for all currently live WC 2026 matches.
 
-    Uses a single Session so IN_PLAY and PAUSED share one SSL connection,
-    avoiding SSL EOF errors from rapid back-to-back HTTPS handshakes.
-    Only reports an error when zero matches were found AND a request failed.
+    Tries the competition-specific endpoint first; falls back to the global
+    /v4/matches endpoint (filtered by competition) when that returns empty,
+    which handles cases where the key's tier does not include the competition
+    endpoint but does include the general matches endpoint.
     """
     aliases = _alias_map()
     seen: set[int] = set()
@@ -180,6 +181,8 @@ def fetch_live_matches(api_key: str) -> tuple[list[dict], str | None]:
 
     with _make_session() as session:
         session.headers.update(_headers(api_key))
+
+        # Primary: competition-specific endpoint
         for status in ("IN_PLAY", "PAUSED"):
             try:
                 resp = session.get(
@@ -189,9 +192,11 @@ def fetch_live_matches(api_key: str) -> tuple[list[dict], str | None]:
                 )
                 if resp.status_code == 429:
                     first_error = first_error or "Rate limited — try again in a moment."
+                    _log.warning("fetch_live_matches: 429 rate-limited (status=%s)", status)
                     continue
                 if resp.status_code == 403:
-                    first_error = first_error or "API key rejected or plan does not cover this competition."
+                    first_error = first_error or "API key tier does not cover this competition."
+                    _log.warning("fetch_live_matches: 403 from competition endpoint (status=%s) — will try /v4/matches fallback", status)
                     continue
                 resp.raise_for_status()
                 for m in resp.json().get("matches", []):
@@ -201,13 +206,40 @@ def fetch_live_matches(api_key: str) -> tuple[list[dict], str | None]:
                         results.append(parsed)
             except requests.Timeout:
                 first_error = first_error or "Request timed out."
+                _log.warning("fetch_live_matches: timeout (status=%s)", status)
             except Exception as e:
                 first_error = first_error or str(e)
+                _log.warning("fetch_live_matches: competition endpoint error (status=%s): %s", status, e)
+
+        _log.warning("fetch_live_matches: competition endpoint → %d match(es), error=%s",
+                     len(results), first_error)
+
+        # Fallback: global /v4/matches — same data the football-data.org homepage uses
+        if not results:
+            try:
+                resp = session.get(
+                    f"{_BASE}/matches",
+                    params={"competitions": _COMPETITION, "status": "IN_PLAY"},
+                    timeout=10,
+                )
+                if resp.status_code not in (429, 403):
+                    resp.raise_for_status()
+                    for m in resp.json().get("matches", []):
+                        if m.get("competition", {}).get("code") != _COMPETITION:
+                            continue
+                        parsed = _parse_match(m, aliases)
+                        if parsed["id"] not in seen:
+                            seen.add(parsed["id"])
+                            results.append(parsed)
+                    _log.warning("fetch_live_matches: /v4/matches fallback → %d match(es)", len(results))
+                else:
+                    _log.warning("fetch_live_matches: /v4/matches fallback got HTTP %d", resp.status_code)
+            except Exception as e:
+                _log.warning("fetch_live_matches: /v4/matches fallback error: %s", e)
 
     err = first_error if not results else None
     _record("football_data", ok=err is None, error=err,
             rate_limited=bool(err and "Rate limited" in err))
-    # Only surface an error when we have nothing to show
     return results, err
 
 
@@ -268,8 +300,8 @@ def fetch_todays_matches(api_key: str) -> list[dict]:
         matches = resp.json().get("matches", [])
         _record("football_data", ok=True)
         statuses = [m.get("status") for m in matches]
-        _log.info("fetch_todays_matches: %d matches in [%s, %s], statuses=%s",
-                  len(matches), date_from, date_to, statuses)
+        _log.warning("fetch_todays_matches: %d match(es) in [%s, %s] statuses=%s",
+                     len(matches), date_from, date_to, statuses)
         return [_parse_match(m, aliases) for m in matches
                 if m.get("status") in ("TIMED", "SCHEDULED")]
     except Exception as e:
