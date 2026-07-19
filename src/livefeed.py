@@ -166,67 +166,77 @@ def _parse_match(m: dict, aliases: dict[str, str]) -> dict:
     }
 
 
+# Statuses that mean a match is actively in progress (includes undocumented 'LIVE')
+_LIVE_STATUSES = frozenset({"IN_PLAY", "PAUSED", "LIVE", "EXTRA_TIME", "PENALTY_SHOOTOUT"})
+
+
 def fetch_live_matches(api_key: str) -> tuple[list[dict], str | None]:
     """Return (live_matches, error_or_None) for all currently live WC 2026 matches.
 
-    Tries the competition-specific endpoint first; falls back to the global
-    /v4/matches endpoint (filtered by competition) when that returns empty,
-    which handles cases where the key's tier does not include the competition
-    endpoint but does include the general matches endpoint.
+    Queries today's date range without a status filter, then picks out matches
+    whose status is in _LIVE_STATUSES.  This is more reliable than filtering
+    server-side by status because football-data.org's 'LIVE' value (used during
+    the 2026 WC knockouts) is not recognised as a query-parameter value by the
+    competition endpoint — querying ?status=LIVE always returns 0 results.
+    Falls back to the global /v4/matches endpoint if the competition endpoint
+    returns nothing.
     """
+    from datetime import timedelta
     aliases = _alias_map()
-    seen: set[int] = set()
     results: list[dict] = []
     first_error: str | None = None
 
     with _make_session() as session:
         session.headers.update(_headers(api_key))
 
-        # Primary: competition-specific endpoint
-        # football-data.org uses "LIVE" (undocumented) in addition to "IN_PLAY"
-        for status in ("IN_PLAY", "PAUSED", "LIVE"):
-            try:
-                resp = session.get(
-                    f"{_BASE}/competitions/{_COMPETITION}/matches",
-                    params={"status": status},
-                    timeout=10,
-                )
-                if resp.status_code == 429:
-                    first_error = first_error or "Rate limited — try again in a moment."
-                    _log.warning("fetch_live_matches: 429 rate-limited (status=%s)", status)
-                    continue
-                if resp.status_code == 403:
-                    first_error = first_error or "API key tier does not cover this competition."
-                    _log.warning("fetch_live_matches: 403 from competition endpoint (status=%s) — will try /v4/matches fallback", status)
-                    continue
+        # Primary: competition endpoint, date-range query, client-side status filter
+        today = date.today().isoformat()
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+        try:
+            resp = session.get(
+                f"{_BASE}/competitions/{_COMPETITION}/matches",
+                params={"dateFrom": today, "dateTo": tomorrow},
+                timeout=10,
+            )
+            if resp.status_code == 429:
+                first_error = "Rate limited — try again in a moment."
+                _log.warning("fetch_live_matches: 429 rate-limited")
+            elif resp.status_code == 403:
+                first_error = "API key tier does not cover this competition."
+                _log.warning("fetch_live_matches: 403 — will try /v4/matches fallback")
+            else:
                 resp.raise_for_status()
+                seen: set[int] = set()
                 for m in resp.json().get("matches", []):
-                    parsed = _parse_match(m, aliases)
-                    if parsed["id"] not in seen:
-                        seen.add(parsed["id"])
-                        results.append(parsed)
-            except requests.Timeout:
-                first_error = first_error or "Request timed out."
-                _log.warning("fetch_live_matches: timeout (status=%s)", status)
-            except Exception as e:
-                first_error = first_error or str(e)
-                _log.warning("fetch_live_matches: competition endpoint error (status=%s): %s", status, e)
+                    if m.get("status") in _LIVE_STATUSES:
+                        parsed = _parse_match(m, aliases)
+                        if parsed["id"] not in seen:
+                            seen.add(parsed["id"])
+                            results.append(parsed)
+        except requests.Timeout:
+            first_error = "Request timed out."
+            _log.warning("fetch_live_matches: timeout on competition endpoint")
+        except Exception as e:
+            first_error = str(e)
+            _log.warning("fetch_live_matches: competition endpoint error: %s", e)
 
-        _log.warning("fetch_live_matches: competition endpoint → %d match(es), error=%s",
-                     len(results), first_error)
+        _log.warning("fetch_live_matches: %d live match(es) (error=%s)", len(results), first_error)
 
         # Fallback: global /v4/matches — same data the football-data.org homepage uses
         if not results:
             try:
                 resp = session.get(
                     f"{_BASE}/matches",
-                    params={"competitions": _COMPETITION, "status": "IN_PLAY"},
+                    params={"competitions": _COMPETITION},
                     timeout=10,
                 )
                 if resp.status_code not in (429, 403):
                     resp.raise_for_status()
+                    seen = set()
                     for m in resp.json().get("matches", []):
                         if m.get("competition", {}).get("code") != _COMPETITION:
+                            continue
+                        if m.get("status") not in _LIVE_STATUSES:
                             continue
                         parsed = _parse_match(m, aliases)
                         if parsed["id"] not in seen:
