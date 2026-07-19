@@ -236,11 +236,23 @@ export function Live() {
 
                 {/* Live probabilities */}
                 {m.live_probs && (
-                  <div className="grid grid-cols-3 gap-2">
-                    <ProbBadge label={`${m.home} win`} value={m.live_probs.p_home} color="var(--color-host-blue-bright)" />
-                    <ProbBadge label="Draw" value={m.live_probs.p_draw} color="var(--color-ink-400)" />
-                    <ProbBadge label={`${m.away} win`} value={m.live_probs.p_away} color="var(--color-host-red)" />
-                  </div>
+                  m.is_ko ? (
+                    <div className="space-y-1.5">
+                      <div className="grid grid-cols-2 gap-3">
+                        <ProbBadge label={`${m.home} wins`} value={m.live_probs.p_home} color="var(--color-host-blue-bright)" />
+                        <ProbBadge label={`${m.away} wins`} value={m.live_probs.p_away} color="var(--color-host-red)" />
+                      </div>
+                      <p className="text-center text-[10px] text-ink-500 uppercase tracking-[0.14em]">
+                        Knockout — includes ET &amp; penalties · no draw possible
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      <ProbBadge label={`${m.home} win`} value={m.live_probs.p_home} color="var(--color-host-blue-bright)" />
+                      <ProbBadge label="Draw" value={m.live_probs.p_draw} color="var(--color-ink-400)" />
+                      <ProbBadge label={`${m.away} win`} value={m.live_probs.p_away} color="var(--color-host-red)" />
+                    </div>
+                  )
                 )}
 
                 {/* Live match stats from API-Football */}
@@ -258,11 +270,18 @@ export function Live() {
                   <Collapsible title="Pre-match prediction" icon={Info} accent="neutral">
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                       <span className="text-host-blue-bright font-semibold">{m.home} {(m.prematch.p_home * 100).toFixed(0)}%</span>
-                      <span className="text-ink-400">Draw {(m.prematch.p_draw * 100).toFixed(0)}%</span>
+                      {!m.is_ko && (
+                        <span className="text-ink-400">Draw {(m.prematch.p_draw * 100).toFixed(0)}%</span>
+                      )}
                       <span className="text-host-red font-semibold">{m.away} {(m.prematch.p_away * 100).toFixed(0)}%</span>
-                      <span className="text-ink-500">
-                        xG {m.prematch.lambda_home?.toFixed(2)} – {m.prematch.lambda_away?.toFixed(2)}
-                      </span>
+                      {m.prematch.lambda_home != null && (
+                        <span className="text-ink-500">
+                          xG {m.prematch.lambda_home.toFixed(2)} – {m.prematch.lambda_away?.toFixed(2)}
+                        </span>
+                      )}
+                      {m.is_ko && (
+                        <span className="text-ink-500 w-full text-[11px]">Odds include ET &amp; penalties</span>
+                      )}
                     </div>
                   </Collapsible>
                 )}

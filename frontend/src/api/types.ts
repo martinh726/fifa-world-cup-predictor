@@ -208,6 +208,8 @@ export interface LiveMatch {
   minute_estimated: boolean
   status: string
   utc_date: string
+  stage?: string
+  is_ko?: boolean
   prematch: LiveProbs | null
   live_probs: LiveProbs | null
   prediction?: LiveProbs

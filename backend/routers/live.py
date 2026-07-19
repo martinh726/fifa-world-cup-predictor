@@ -16,6 +16,33 @@ from src.predict import ingame_probs
 router = APIRouter()
 log = logging.getLogger(__name__)
 
+# KO-stage matches cannot end in a draw (they go to ET then pens).
+_KO_STAGES = frozenset({
+    "LAST_32", "LAST_16", "QUARTER_FINAL", "SEMI_FINAL",
+    "FINAL", "THIRD_PLACE", "THIRD_PLACE_PLAY_OFF", "PLAY_OFF",
+})
+
+
+def _adjust_ko_probs(probs: dict) -> dict:
+    """Redistribute draw probability proportionally for KO matches.
+
+    P(home wins overall) = P(home 90') + P(draw 90') × P(home) / (P(home) + P(away))
+    This approximates "who benefits from the draw pool going to ET/pens" by
+    assuming each team's relative strength carries through to extra time.
+    """
+    ph = probs.get("p_home", 0.0)
+    pd = probs.get("p_draw", 0.0)
+    pa = probs.get("p_away", 0.0)
+    denom = ph + pa
+    if denom == 0 or pd == 0:
+        return {**probs, "p_draw": 0.0}
+    return {
+        **probs,
+        "p_home": round(ph + pd * ph / denom, 4),
+        "p_draw": 0.0,
+        "p_away": round(pa + pd * pa / denom, 4),
+    }
+
 
 def _api_key() -> str | None:
     # get_api_key() falls back to os.environ automatically
@@ -81,6 +108,13 @@ def get_live(state: AppState = Depends(get_state)):
                 "p_away": round(lp["p_away"], 4),
             }
 
+        # KO matches have no draw: redistribute draw probability to the two teams
+        is_ko = m.get("stage", "") in _KO_STAGES
+        if is_ko and live_prob:
+            live_prob = _adjust_ko_probs(live_prob)
+        if is_ko and prematch:
+            prematch = _adjust_ko_probs(prematch)
+
         # Fetch live stats from API-Football when available (120 s per-fixture cache)
         match_stats = None
         af_match = af_live.get(f"{home_t}v{away_t}")
@@ -91,7 +125,8 @@ def get_live(state: AppState = Depends(get_state)):
                 log.warning("fetch_apifootball_stats failed for %s v %s: %s",
                             home_t, away_t, e)
 
-        enriched.append({**m, "prematch": prematch, "live_probs": live_prob, "match_stats": match_stats})
+        enriched.append({**m, "prematch": prematch, "live_probs": live_prob,
+                         "match_stats": match_stats, "is_ko": is_ko})
 
     todays_upcoming: list = []
     if not live_matches:
