@@ -88,6 +88,13 @@ def get_live(state: AppState = Depends(get_state)):
     enriched = []
     for m, prematch_pred in zip(live_matches, live_preds):
         home_t, away_t = m["home"], m["away"]
+
+        # Resolve exact minute from API-Football BEFORE computing in-game probs so
+        # the model uses the real match clock, not our wall-clock estimate.
+        af_match = af_live.get(f"{home_t}v{away_t}")
+        if af_match and af_match.get("minute"):
+            m = {**m, "minute": af_match["minute"], "minute_estimated": False}
+
         prematch = None
         live_prob = None
         if prematch_pred is not None:
@@ -117,7 +124,6 @@ def get_live(state: AppState = Depends(get_state)):
 
         # Fetch live stats from API-Football when available (120 s per-fixture cache)
         match_stats = None
-        af_match = af_live.get(f"{home_t}v{away_t}")
         if af_key and af_match and af_match.get("fixture_id"):
             try:
                 match_stats = fetch_apifootball_stats(af_key, af_match["fixture_id"])
