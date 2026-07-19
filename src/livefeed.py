@@ -257,7 +257,7 @@ def fetch_todays_matches(api_key: str) -> list[dict]:
             session.headers.update(_headers(api_key))
             resp = session.get(
                 f"{_BASE}/competitions/{_COMPETITION}/matches",
-                params={"dateFrom": date_from, "dateTo": date_to, "status": "SCHEDULED"},
+                params={"dateFrom": date_from, "dateTo": date_to},
                 timeout=10,
             )
         if resp.status_code == 429:
@@ -267,8 +267,9 @@ def fetch_todays_matches(api_key: str) -> list[dict]:
         resp.raise_for_status()
         matches = resp.json().get("matches", [])
         _record("football_data", ok=True)
-        _log.debug("fetch_todays_matches: %d scheduled matches in [%s, %s]",
-                   len(matches), date_from, date_to)
+        statuses = [m.get("status") for m in matches]
+        _log.info("fetch_todays_matches: %d matches in [%s, %s], statuses=%s",
+                  len(matches), date_from, date_to, statuses)
         return [_parse_match(m, aliases) for m in matches
                 if m.get("status") in ("TIMED", "SCHEDULED")]
     except Exception as e:
