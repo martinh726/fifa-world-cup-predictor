@@ -11,7 +11,10 @@ import logging
 import os
 from datetime import date, datetime, timezone
 
+import ssl
+
 import requests
+from requests.adapters import HTTPAdapter
 
 from src.data_loader import load_wc2026
 
@@ -75,6 +78,30 @@ def _norm(name: str, aliases: dict[str, str]) -> str:
 
 def _headers(api_key: str) -> dict:
     return {"X-Auth-Token": api_key}
+
+
+def _make_session() -> requests.Session:
+    """Return a Session that tolerates servers closing TLS without close_notify.
+
+    Python 3.10+ raises SSLEOFError ('EOF occurred in violation of protocol')
+    when the remote end closes the connection without sending the TLS close_notify
+    alert — football-data.org does this intermittently.  Mounting a custom
+    SSLContext with OP_LEGACY_SERVER_CONNECT (available from Python 3.12, but we
+    guard the attribute lookup so it degrades gracefully on 3.10/3.11) suppresses
+    the error without disabling certificate verification.
+    """
+    ctx = ssl.create_default_context()
+    if hasattr(ssl, "OP_LEGACY_SERVER_CONNECT"):
+        ctx.options |= ssl.OP_LEGACY_SERVER_CONNECT  # type: ignore[attr-defined]
+
+    class _TLSAdapter(HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):  # type: ignore[override]
+            kwargs["ssl_context"] = ctx
+            return super().init_poolmanager(*args, **kwargs)
+
+    session = requests.Session()
+    session.mount("https://", _TLSAdapter())
+    return session
 
 
 _HT_BREAK_MIN = 15   # assumed half-time break length
@@ -151,7 +178,7 @@ def fetch_live_matches(api_key: str) -> tuple[list[dict], str | None]:
     results: list[dict] = []
     first_error: str | None = None
 
-    with requests.Session() as session:
+    with _make_session() as session:
         session.headers.update(_headers(api_key))
         for status in ("IN_PLAY", "PAUSED"):
             try:
@@ -191,7 +218,7 @@ def fetch_finished_matches(api_key: str) -> list[dict]:
     """
     aliases = _alias_map()
     try:
-        with requests.Session() as session:
+        with _make_session() as session:
             session.headers.update(_headers(api_key))
             resp = session.get(
                 f"{_BASE}/competitions/{_COMPETITION}/matches",
@@ -214,16 +241,25 @@ def fetch_finished_matches(api_key: str) -> list[dict]:
 
 
 def fetch_todays_matches(api_key: str) -> list[dict]:
-    """Return today's upcoming WC 2026 matches (not yet kicked off)."""
+    """Return today's (and tomorrow's) upcoming WC 2026 matches not yet kicked off.
+
+    We query a 2-day window so that late-evening matches whose UTC date falls on
+    the following calendar day (e.g. a 23:00 local kick-off ≡ 03:00 UTC tomorrow)
+    still appear in the Live tab today.
+    """
+    from datetime import timedelta
     aliases = _alias_map()
-    today = date.today().isoformat()
+    today = date.today()
+    date_from = today.isoformat()
+    date_to = (today + timedelta(days=1)).isoformat()
     try:
-        resp = requests.get(
-            f"{_BASE}/competitions/{_COMPETITION}/matches",
-            params={"dateFrom": today, "dateTo": today, "status": "SCHEDULED"},
-            headers=_headers(api_key),
-            timeout=10,
-        )
+        with _make_session() as session:
+            session.headers.update(_headers(api_key))
+            resp = session.get(
+                f"{_BASE}/competitions/{_COMPETITION}/matches",
+                params={"dateFrom": date_from, "dateTo": date_to, "status": "SCHEDULED"},
+                timeout=10,
+            )
         if resp.status_code == 429:
             _record("football_data", ok=False, error="Rate limited", rate_limited=True)
             _log.warning("fetch_todays_matches rate-limited (429)")
@@ -231,7 +267,8 @@ def fetch_todays_matches(api_key: str) -> list[dict]:
         resp.raise_for_status()
         matches = resp.json().get("matches", [])
         _record("football_data", ok=True)
-        # API returns TIMED records under SCHEDULED umbrella; filter out non-upcoming
+        _log.debug("fetch_todays_matches: %d scheduled matches in [%s, %s]",
+                   len(matches), date_from, date_to)
         return [_parse_match(m, aliases) for m in matches
                 if m.get("status") in ("TIMED", "SCHEDULED")]
     except Exception as e:
@@ -277,12 +314,13 @@ def fetch_apifootball_live(api_key: str) -> dict[str, dict]:
     """
     aliases = {**_alias_map(), **_AF_ALIASES}
     try:
-        resp = requests.get(
-            f"{_AF_BASE}/fixtures",
-            params={"live": "all"},
-            headers={"x-apisports-key": api_key},
-            timeout=10,
-        )
+        with _make_session() as session:
+            resp = session.get(
+                f"{_AF_BASE}/fixtures",
+                params={"live": "all"},
+                headers={"x-apisports-key": api_key},
+                timeout=10,
+            )
         resp.raise_for_status()
         results: dict[str, dict] = {}
         for f in resp.json().get("response", []):
@@ -352,12 +390,13 @@ def fetch_apifootball_stats(api_key: str, fixture_id: int) -> dict | None:
         return cached_val
 
     try:
-        resp = requests.get(
-            f"{_AF_BASE}/fixtures/statistics",
-            params={"fixture": fixture_id},
-            headers={"x-apisports-key": api_key},
-            timeout=10,
-        )
+        with _make_session() as session:
+            resp = session.get(
+                f"{_AF_BASE}/fixtures/statistics",
+                params={"fixture": fixture_id},
+                headers={"x-apisports-key": api_key},
+                timeout=10,
+            )
         resp.raise_for_status()
         data = resp.json().get("response", [])
         if len(data) < 2:
@@ -395,12 +434,13 @@ def fetch_scheduled_matches(api_key: str, days: int = 30) -> list[dict]:
     date_from = date.today().isoformat()
     date_to = (date.today() + timedelta(days=days)).isoformat()
     try:
-        resp = requests.get(
-            f"{_BASE}/competitions/{_COMPETITION}/matches",
-            params={"dateFrom": date_from, "dateTo": date_to},
-            headers=_headers(api_key),
-            timeout=10,
-        )
+        with _make_session() as session:
+            session.headers.update(_headers(api_key))
+            resp = session.get(
+                f"{_BASE}/competitions/{_COMPETITION}/matches",
+                params={"dateFrom": date_from, "dateTo": date_to},
+                timeout=10,
+            )
         if resp.status_code == 429:
             _record("football_data", ok=False, error="Rate limited", rate_limited=True)
             raise RuntimeError("Rate limited — try again in a moment.")

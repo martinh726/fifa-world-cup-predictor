@@ -23,6 +23,10 @@ class TTLCache:
     def invalidate(self) -> None:
         self._expires_at = 0.0
 
+    def get_or_stale(self) -> Any:
+        """Return the last cached value even if the TTL has expired."""
+        return self._value
+
 
 class KeyedTTLCache:
     """Same as TTLCache but holds one entry per key (e.g. per team name)."""

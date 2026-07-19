@@ -117,7 +117,16 @@ def get_live(state: AppState = Depends(get_state)):
         "error": err,
         "fetched_at": datetime.datetime.utcnow().isoformat() + "Z",
     }
-    live_cache.set(result)
+
+    # Only cache if we actually got something — otherwise keep the last good
+    # response alive so a transient SSL blip doesn't blank the Live tab.
+    if enriched or todays_upcoming:
+        live_cache.set(result)
+    elif live_cache.get_or_stale() is not None:
+        return live_cache.get_or_stale()
+    else:
+        live_cache.set(result)
+
     return result
 
 
